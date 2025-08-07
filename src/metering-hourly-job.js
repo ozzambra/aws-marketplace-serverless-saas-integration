@@ -38,7 +38,7 @@ exports.job = async () => {
 
     if (hashMap[customerIdentifier]) {
       hashMap[customerIdentifier].create_timestamps.push(item.create_timestamp);
-      hashMap[customerIdentifier].dimension_usage = addUpDimensions([...hashMap[customerIdentifier].dimension_usage, ...item.dimension_usage]);
+      hashMap[customerIdentifier].dimension_usage = addUpDimensions([...hashMap[customerAwsAccountId].dimension_usage, ...item.dimension_usage]);
     } else {
       hashMap[customerIdentifier] = item;
       hashMap[customerIdentifier].create_timestamps = [item.create_timestamp];

@@ -49,6 +49,7 @@ const setBuyerNotificationHandler = function (contactEmail) {
 };
 
 exports.registerNewSubscriber = async (event) => {
+  console.log('event:', JSON.stringify(event, null, 2));
   const {
     // Accept form inputs from ../web/index.html
     regToken, companyName, contactPerson, contactPhone, contactEmail,
@@ -67,7 +68,9 @@ exports.registerNewSubscriber = async (event) => {
         .promise();
 
       // Store new subscriber data in dynamoDb
+      // Once the ResolveCustomer API return the AgreementID we will use this as customerIdentifier
       const { CustomerIdentifier, ProductCode, CustomerAWSAccountId } = resolveCustomerResponse;
+      console.log(`CustomerIdentifier: ${CustomerIdentifier} ProductCode: ${ProductCode} CustomerAWSAccountId: ${CustomerAWSAccountId}`);
 
       const datetime = new Date().getTime().toString();
 
@@ -79,9 +82,8 @@ exports.registerNewSubscriber = async (event) => {
           contactPerson: { S: contactPerson },
           contactPhone: { S: contactPhone },
           contactEmail: { S: contactEmail },
-          customerIdentifier: { S: CustomerIdentifier },
           productCode: { S: ProductCode },
-          customerAWSAccountID: { S: CustomerAWSAccountId },          
+          customerIdentifier: { S: CustomerAWSAccountId },          
           created: { S: datetime },
         },
       };
@@ -95,7 +97,7 @@ exports.registerNewSubscriber = async (event) => {
               "Type": "Notification", 
               "Message" : {
                   "action" : "entitlement-updated",
-                  "customer-identifier": "${CustomerIdentifier}",
+                  "customer-aws-account-id": "${CustomerAWSAccountId}",
                   "product-code" : "${ProductCode}"
                   } 
               }`,

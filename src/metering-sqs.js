@@ -5,6 +5,7 @@ const dynamodb = new AWS.DynamoDB({ apiVersion: '2012-08-10', region: aws_region
 const marketplacemetering = new AWS.MarketplaceMetering({ apiVersion: '2016-01-14', region: 'us-east-1' });
 
 exports.handler = async (event) => {
+  console.log('event:', JSON.stringify(event, null, 2));
   await Promise.all(event.Records.map(async (record) => {
     const body = JSON.parse(record.body);
     console.log(`SQS message body: ${record.body}`);
@@ -14,7 +15,7 @@ exports.handler = async (event) => {
     const UsageRecords = [];
     body.dimension_usage.map((r) => UsageRecords.push(
       {
-        CustomerIdentifier: body.customerIdentifier,
+        CustomerAWSAccountId: body.customerAwsAccountId,
         Dimension: r.dimension,
         Quantity: r.value,
         Timestamp: timestmpNow,
@@ -43,7 +44,7 @@ exports.handler = async (event) => {
         const dynamoDbParams = {
           TableName: AWSMarketplaceMeteringRecordsTableName,
           Key: {
-            customerIdentifier: { S: body.customerIdentifier },
+            customerIdentifier: { S: body.customerAwsAccountId },
             create_timestamp: { N: `${ts}` },
           },
           UpdateExpression: 'set metering_response = :x, metering_failed = :mf remove metering_pending',

@@ -5,6 +5,7 @@ const marketplaceEntitlementService = new AWS.MarketplaceEntitlementService({ ap
 const dynamodb = new AWS.DynamoDB({ apiVersion: '2012-08-10', region: aws_region });
 
 exports.handler = async (event) => {
+  console.log('event:', JSON.stringify(event, null, 2));
   await Promise.all(event.Records.map(async (record) => {
     const { body } = record;
     let { Message: message } = JSON.parse(body);
@@ -17,7 +18,7 @@ exports.handler = async (event) => {
       const entitlementParams = {
         ProductCode: message['product-code'],
         Filter: {
-          CUSTOMER_IDENTIFIER: [message['customer-identifier']],
+          CUSTOMER_AWS_ACCOUNT_ID: [message['customer-aws-account-id']],
         },
       };
 
@@ -31,7 +32,7 @@ exports.handler = async (event) => {
       const dynamoDbParams = {
         TableName: newSubscribersTableName,
         Key: {
-          customerIdentifier: { S: message['customer-identifier'] },
+          customerIdentifier: { S: message['customer-aws-account-id'] },
         },
         UpdateExpression: 'set entitlement = :e, successfully_subscribed = :ss, subscription_expired = :se',
         ExpressionAttributeValues: {

@@ -5,6 +5,7 @@ const SNS = new AWS.SNS({ apiVersion: '2010-03-31' });
 
 
 exports.SQSHandler = async (event) => {
+  console.log('event:', JSON.stringify(event, null, 2));
   await Promise.all(event.Records.map(async (record) => {
     const { body } = record;
     let { Message: message } = JSON.parse(body);
@@ -49,7 +50,7 @@ exports.SQSHandler = async (event) => {
     const dynamoDbParams = {
       TableName: newSubscribersTableName,
       Key: {
-        customerIdentifier: { S: message['customer-identifier'] },
+        customerAwsAccountId: { S: message['customer-aws-account-id'] },
       },
       UpdateExpression: 'set subscription_action = :ac, successfully_subscribed = :ss, subscription_expired = :se, is_free_trial_term_present = :ft',
       ExpressionAttributeValues: {
