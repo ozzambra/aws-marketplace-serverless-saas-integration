@@ -43,9 +43,18 @@ const setBuyerNotificationHandler = function (contactEmail) {
     Source: marketplaceSellerEmail,
   };
 
-  return ses.sendEmail(params).promise()
-
-
+  // catch SES error. When SES fails to send an email
+  // to the email address the customer entered
+  // the registering page fails with internal error
+  // catching this error solves this internal error message
+  ses.sendEmail(params).promise()
+    .then(result => {
+      return true
+    })
+    .catch(error => {
+        console.error('sending email via SES failed:', error);
+        return false
+    });
 };
 
 exports.registerNewSubscriber = async (event) => {
@@ -75,6 +84,7 @@ exports.registerNewSubscriber = async (event) => {
       const datetime = new Date().getTime().toString();
 
       // Write form inputs from ../web/index.html
+      // Add customerAwsAccountId
       const dynamoDbParams = {
         TableName: newSubscribersTableName,
         Item: {
@@ -83,12 +93,15 @@ exports.registerNewSubscriber = async (event) => {
           contactPhone: { S: contactPhone },
           contactEmail: { S: contactEmail },
           productCode: { S: ProductCode },
-          customerIdentifier: { S: CustomerAWSAccountId },          
+          customerAwsAccountId: { S: CustomerAWSAccountId },
+          customerIdentifier: { S: CustomerIdentifier },         
           created: { S: datetime },
         },
       };
 
+      console.log(`updating DynamoDB with dynamoDbParams: ${JSON.stringify(dynamoDbParams, null, 2)}`);
       await dynamodb.putItem(dynamoDbParams).promise();
+      console.log('DynamoDB updated');
 
       // Only for SaaS Contracts, check entitlement
       if (entitlementQueueUrl) {
@@ -98,17 +111,20 @@ exports.registerNewSubscriber = async (event) => {
               "Message" : {
                   "action" : "entitlement-updated",
                   "customer-aws-account-id": "${CustomerAWSAccountId}",
-                  "product-code" : "${ProductCode}"
+                  "customer-identifier" : "${CustomerIdentifier}",
+                  "product-code" : "${ProductCode}",
+                  "origin" : "lambda:${process.env.AWS_LAMBDA_FUNCTION_NAME}"
                   } 
               }`,
           QueueUrl: entitlementQueueUrl,
         };
+
+        console.log(`sending message to SQS "${entitlementQueueUrl}" with params: ${JSON.stringify(SQSParams, null, 2)}`);
         await sqs.sendMessage(SQSParams).promise();
+        console.log('message sent to SQS');
       }
 
       await setBuyerNotificationHandler(contactEmail);
-
-
 
       return lambdaResponse(200, 'Success! Registration completed. You have purchased an enterprise product that requires some additional setup. A representative from our team will be contacting you within two business days with your account credentials. Please contact Support through our website if you have any questions.');
     } catch (error) {

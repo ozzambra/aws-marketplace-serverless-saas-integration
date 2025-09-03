@@ -112,8 +112,6 @@ Conditions:
   CreateCrossAccount: !Equals [!Ref CreateCrossAccountRole, true]
   UpdateFulfillment: !Equals [!Ref UpdateFulfillmentURL, true]
 
-Resources:
-
   ServerlessApi:
     Type: AWS::Serverless::Api
     Properties:
