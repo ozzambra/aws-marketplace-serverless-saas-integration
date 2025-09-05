@@ -5,6 +5,29 @@ const { NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region
 const dynamodb = new AWS.DynamoDB({ apiVersion: '2012-08-10', region: aws_region });
 const { MarketplaceEntitlementServiceClient, GetEntitlementsCommand } = require("@aws-sdk/client-marketplace-entitlement-service");
 
+
+async function getEntitlements(productCode, customerIdentifier, customerAccountId, region) {
+  try {
+    const filter = customerAccountId 
+      ? { CUSTOMER_AWS_ACCOUNT_ID: [customerAccountId] }
+      : { CUSTOMER_IDENTIFIER: [customerIdentifier] };
+
+    const entitlementParams = {
+      ProductCode: productCode,
+      Filter: filter
+    };
+    console.log('entitlementParams:', JSON.stringify(entitlementParams, null, 2));
+
+    const mpClient = new MarketplaceEntitlementServiceClient({ region });
+    const command = new GetEntitlementsCommand(entitlementParams);
+    return await mpClient.send(command);
+  } catch (error) {
+    console.error('Error getting entitlements:', error);
+    return null;
+  }
+}
+
+
 exports.handler = async (event) => {
   console.log('event:', JSON.stringify(event, null, 2));
   await Promise.all(event.Records.map(async (record) => {
@@ -17,26 +40,22 @@ exports.handler = async (event) => {
     console.log(`message: ${JSON.stringify(message, null, 2)}`);
 
     if (message.action === 'entitlement-updated') {
-      let filter = {CUSTOMER_IDENTIFIER: [message['customer-identifier']]};
-      let customerIdentifier = message['customer-identifier'];
+      let customerIdentifier = null;
+      let customerAwsAccountId = null;
       if ('customer-aws-account-id' in message) {
-        filter = {CUSTOMER_AWS_ACCOUNT_ID: [message['customer-aws-account-id']]};
         customerIdentifier = message['customer-aws-account-id'];
       } else {
         console.log('customer-aws-account-id not found in message, will use customer-identifier (DEPRECATION March 2026) instead');
+        customerIdentifier = message['customer-identifier'];
       }
-      const entitlementParams = {
-        ProductCode: message['product-code'],
-        Filter: filter,
-      };
-      console.log(`entitlementParams: ${JSON.stringify(entitlementParams, null, 2)}`);
-      
-      const mpClient = new MarketplaceEntitlementServiceClient({ region: aws_region });
 
-      const command = new GetEntitlementsCommand(entitlementParams);
-      const entitlementsResponse = await mpClient.send(command);
-      // the statement below does not return the AwsAccountId
-      //const entitlementsResponse = await marketplaceEntitlementService.getEntitlements(entitlementParams).promise();
+      const entitlementsResponse = await getEntitlements(
+        message['product-code'], 
+        customerIdentifier,
+        customerAwsAccountId,
+        aws_region
+      );
+
       console.log(`entitlementsResponse: ${JSON.stringify(entitlementsResponse, null, 2)}`);
 
       const isExpired = entitlementsResponse.hasOwnProperty("Entitlements") === false || entitlementsResponse.Entitlements.length === 0 || 

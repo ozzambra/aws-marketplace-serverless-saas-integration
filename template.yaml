@@ -11,6 +11,12 @@ Globals:
       AllowOrigin: "'*'"
       AllowCredentials: "'*'"
 
+Globals:
+  Function:
+    Timeout: 30
+    Tags:
+      StackName: !Ref AWS::StackName
+
 Parameters:
 
   WebsiteS3BucketName:
@@ -36,6 +42,15 @@ Parameters:
       - contracts_with_subscription
       - contracts
       - subscriptions
+
+  MarketplaceEventSource:
+    Type: String
+    Default: "aws.agreement-marketplace"
+    AllowedValues:
+      - "aws.agreement-marketplace"
+      - "aws.agreement-marketplace-test"
+      - "mock.agreement-marketplace"
+    Description: "Event source for marketplace seller events"
 
   SNSAccountID:
     Type: String
@@ -111,6 +126,8 @@ Conditions:
   Buyernotificationemail: !Not [!Equals [!Ref MarketplaceSellerEmail, ""]]
   CreateCrossAccount: !Equals [!Ref CreateCrossAccountRole, true]
   UpdateFulfillment: !Equals [!Ref UpdateFulfillmentURL, true]
+
+Resources:
 
   ServerlessApi:
     Type: AWS::Serverless::Api
@@ -267,7 +284,7 @@ Conditions:
             Path: /subscriber
             Method: post
             RestApiId: !Ref ServerlessApi
-
+  
   EntitlementSQSQueue:
     Type: AWS::SQS::Queue
     Condition: CreateEntitlementLogic
@@ -304,6 +321,9 @@ Conditions:
               QueueArn: !GetAtt EntitlementSQSQueue.Arn
               QueueUrl: !Ref EntitlementSQSQueue
 
+  SubscriptionSQSQueue:
+    Type: AWS::SQS::Queue
+  
   SubscriptionSQSHandler:
     Type: AWS::Serverless::Function
     Properties:
@@ -323,14 +343,111 @@ Conditions:
               Action:
                 - sns:Publish
               Resource: !Ref SupportSNSTopic
+            - Sid: AWSMarketplaceEntitlements
+              Effect: Allow
+              Action:
+                - aws-marketplace:GetEntitlements
+              Resource: "*"
       Events:
         MySQSEvent:
           Type: SNS
           Properties:
-            #Topic: !Ref SubscriptionSNSTopic
             Topic:  !Sub 'arn:aws:sns:${SNSRegion}:${SNSAccountID}:aws-mp-subscription-notification-${GetProductCode.ProductCode}'
             Region: !Sub '${SNSRegion}'
-            SqsSubscription: true
+            SqsSubscription:
+              BatchSize: 1
+              QueueArn: !GetAtt SubscriptionSQSQueue.Arn
+              QueueUrl: !Ref SubscriptionSQSQueue
+      # Events:
+      #   MySQSEvent:
+      #     Type: SNS
+      #     Properties:
+      #       #Topic: !Ref SubscriptionSNSTopic
+      #       Topic:  !Sub 'arn:aws:sns:${SNSRegion}:${SNSAccountID}:aws-mp-subscription-notification-${GetProductCode.ProductCode}'
+      #       Region: !Sub '${SNSRegion}'
+      #       SqsSubscription: true
+
+  # EventBride notifications
+  # Execution role
+  EventBridgeExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SQSPublishPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource:
+                  - !GetAtt EntitlementSQSQueue.Arn
+                  - !GetAtt SubscriptionSQSQueue.Arn
+
+  # Log groups
+  LicenseEventsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: "/aws/events/marketplace-license"
+      RetentionInDays: 30
+
+  PurchaseEventsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: "/aws/events/marketplace-purchase"
+      RetentionInDays: 30
+
+  MarketplaceSellerLicense:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: default
+      EventPattern:
+        source: [!Ref MarketplaceEventSource]
+        detail-type:
+          - "License Updated - Manufacturer"
+          - "License Deprovisioned - Manufacturer"
+      Targets:
+        - Arn: !GetAtt EntitlementSQSQueue.Arn
+          RoleArn: !GetAtt EventBridgeExecutionRole.Arn
+          Id: "SQSTarget"
+        - Arn: !GetAtt LicenseEventsLogGroup.Arn
+          Id: "LogsTarget"
+      Tags:
+        - Key: "StackName"
+          Value: !Ref AWS::StackName
+
+  MarketplaceSellerPurchase:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: default
+      EventPattern:
+        source: [!Ref MarketplaceEventSource]
+        detail-type:
+          - "Purchase Agreement Created - Manufacturer"
+          - "Purchase Agreement Created - Proposer"
+          - "Purchase Agreement Amended - Manufacturer"
+          - "Purchase Agreement Amended - Proposer"
+          - "Purchase Agreement Ended - Manufacturer"
+          - "Purchase Agreement Ended - Proposer"
+          - "Purchase Agreement Created - Acceptor"
+          - "Purchase Agreement Amended - Acceptor"
+          - "Purchase Agreement Ended - Acceptor"
+      Targets:
+        - Arn: !GetAtt SubscriptionSQSQueue.Arn
+          RoleArn: !GetAtt EventBridgeExecutionRole.Arn
+          Id: "SQSTarget"
+        - Arn: !GetAtt PurchaseEventsLogGroup.Arn
+          Id: "LogsTarget"
+      Tags:
+        - Key: "StackName"
+          Value: !Ref AWS::StackName
+
 
   SupportSNSTopic:
     Type: AWS::SNS::Topic

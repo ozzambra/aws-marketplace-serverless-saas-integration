@@ -4,13 +4,15 @@ const dynamodb = new AWS.DynamoDB({ apiVersion: '2012-08-10', region: aws_region
 const SNS = new AWS.SNS({ apiVersion: '2010-03-31' });
 const { MarketplaceEntitlementServiceClient, GetEntitlementsCommand } = require("@aws-sdk/client-marketplace-entitlement-service");
 
-async function getEntitlements(productCode, customerIdentifier, region) {
+async function getEntitlements(productCode, customerIdentifier, customerAccountId, region) {
   try {
+    const filter = customerAccountId 
+      ? { CUSTOMER_AWS_ACCOUNT_ID: [customerAccountId] }
+      : { CUSTOMER_IDENTIFIER: [customerIdentifier] };
+
     const entitlementParams = {
       ProductCode: productCode,
-      Filter: {
-        CUSTOMER_IDENTIFIER: [customerIdentifier]
-      },
+      Filter: filter
     };
     console.log('entitlementParams:', JSON.stringify(entitlementParams, null, 2));
 
@@ -74,10 +76,11 @@ exports.SQSHandler = async (event) => {
 
     if (!message['customer-aws-account-id']) {
       console.log('customer-aws-account-id not found in message. Trying GetEntitlements');
-      
+
       const entitlementsResponse = await getEntitlements(
         message['product-code'], 
-        message['customer-identifier'], 
+        message['customer-identifier'],
+        null,
         aws_region
       );
       
