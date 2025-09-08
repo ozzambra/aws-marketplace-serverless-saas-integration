@@ -52,12 +52,12 @@ Parameters:
       - "mock.agreement-marketplace"
     Description: "Event source for marketplace seller events"
 
-  SNSAccountID:
-    Type: String
-    Default: "287250355862"
-    Description: "This is the AWS account hosting the SNS Entitlement and Subscription topics for your product."
-    AllowedValues:
-      - "287250355862"
+  # SNSAccountID:
+  #   Type: String
+  #   Default: "287250355862"
+  #   Description: "This is the AWS account hosting the SNS Entitlement and Subscription topics for your product."
+  #   AllowedValues:
+  #     - "287250355862"
 
   SNSRegion:
       Type: String
@@ -311,15 +311,21 @@ Resources:
                 - aws-marketplace:GetEntitlements
               Resource: "*"
       Events:
-        MySQSEvent:
-          Type: SNS
+        SQSTrigger:
+          Type: SQS
           Properties:
-            Topic:  !Sub 'arn:aws:sns:${SNSRegion}:${SNSAccountID}:aws-mp-entitlement-notification-${GetProductCode.ProductCode}'
-            Region: !Sub '${SNSRegion}'
-            SqsSubscription:
-              BatchSize: 1
-              QueueArn: !GetAtt EntitlementSQSQueue.Arn
-              QueueUrl: !Ref EntitlementSQSQueue
+            Queue: !GetAtt EntitlementSQSQueue.Arn
+            BatchSize: 1
+      # Events:
+      #   MySQSEvent:
+      #     Type: SNS
+      #     Properties:
+      #       Topic:  !Sub 'arn:aws:sns:${SNSRegion}:${SNSAccountID}:aws-mp-entitlement-notification-${GetProductCode.ProductCode}'
+      #       Region: !Sub '${SNSRegion}'
+      #       SqsSubscription:
+      #         BatchSize: 1
+      #         QueueArn: !GetAtt EntitlementSQSQueue.Arn
+      #         QueueUrl: !Ref EntitlementSQSQueue
 
   SubscriptionSQSQueue:
     Type: AWS::SQS::Queue
@@ -349,15 +355,21 @@ Resources:
                 - aws-marketplace:GetEntitlements
               Resource: "*"
       Events:
-        MySQSEvent:
-          Type: SNS
+        SQSTrigger:
+          Type: SQS
           Properties:
-            Topic:  !Sub 'arn:aws:sns:${SNSRegion}:${SNSAccountID}:aws-mp-subscription-notification-${GetProductCode.ProductCode}'
-            Region: !Sub '${SNSRegion}'
-            SqsSubscription:
-              BatchSize: 1
-              QueueArn: !GetAtt SubscriptionSQSQueue.Arn
-              QueueUrl: !Ref SubscriptionSQSQueue
+            Queue: !GetAtt SubscriptionSQSQueue.Arn
+            BatchSize: 1
+      # Events:
+      #   MySQSEvent:
+      #     Type: SNS
+      #     Properties:
+      #       Topic:  !Sub 'arn:aws:sns:${SNSRegion}:${SNSAccountID}:aws-mp-subscription-notification-${GetProductCode.ProductCode}'
+      #       Region: !Sub '${SNSRegion}'
+      #       SqsSubscription:
+      #         BatchSize: 1
+      #         QueueArn: !GetAtt SubscriptionSQSQueue.Arn
+      #         QueueUrl: !Ref SubscriptionSQSQueue
       # Events:
       #   MySQSEvent:
       #     Type: SNS
@@ -412,6 +424,10 @@ Resources:
         detail-type:
           - "License Updated - Manufacturer"
           - "License Deprovisioned - Manufacturer"
+        detail:
+          product:
+            id:
+              - !Ref ProductId
       Targets:
         - Arn: !GetAtt EntitlementSQSQueue.Arn
           RoleArn: !GetAtt EventBridgeExecutionRole.Arn
