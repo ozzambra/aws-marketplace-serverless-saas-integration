@@ -31,50 +31,47 @@ async function getEntitlements(productCode, customerIdentifier, customerAccountI
 exports.handler = async (event) => {
   console.log('event:', JSON.stringify(event, null, 2));
   await Promise.all(event.Records.map(async (record) => {
-    const { body } = record;
-    let { Message: message } = JSON.parse(body);
+    
+    const body = JSON.parse(record.body);
+    console.log('body:', body, typeof body);
+    const detailType = body['detail-type'];
 
-    if (typeof message === 'string' || message instanceof String) {
-      message = JSON.parse(message);
-    }
-    console.log(`message: ${JSON.stringify(message, null, 2)}`);
+    console.log('Detail Type:', detailType);   // License Updated - Manufacturer
 
-    if (message.action === 'entitlement-updated') {
-      let customerIdentifier = null;
-      let customerAwsAccountId = null;
-      if ('customer-aws-account-id' in message) {
-        customerIdentifier = message['customer-aws-account-id'];
-      } else {
-        console.log('customer-aws-account-id not found in message, will use customer-identifier (DEPRECATION March 2026) instead');
-        customerIdentifier = message['customer-identifier'];
-      }
+    if (detailType === 'License Updated - Manufacturer') {
+      console.log('Handling detail-type:', detailType);
+
+      const productId = body.detail.product.id;
+      const productCode = body.detail.product.code;
+      const licenseId = body.detail.license.id;
+      const customerAwsAccountId = body.detail.acceptor.accountId;
+      console.log('productId:', productId);
+      console.log('productCode:', productCode);
+      console.log('licenseId:', licenseId);
+      console.log('customerAwsAccountId:', customerAwsAccountId);
 
       const entitlementsResponse = await getEntitlements(
-        message['product-code'], 
-        customerIdentifier,
+        productCode, 
+        null,
         customerAwsAccountId,
         aws_region
       );
 
       console.log(`entitlementsResponse: ${JSON.stringify(entitlementsResponse, null, 2)}`);
-
-      const isExpired = entitlementsResponse.hasOwnProperty("Entitlements") === false || entitlementsResponse.Entitlements.length === 0 || 
-        new Date(entitlementsResponse.Entitlements[0].ExpirationDate) < new Date();
+      const { $metadata, ...entitlementData } = entitlementsResponse;
+      console.log(`entitlementData: ${JSON.stringify(entitlementData, null, 2)}`);
+      const isExpired = entitlementData.hasOwnProperty("Entitlements") === false || entitlementData.Entitlements.length === 0 || 
+        new Date(entitlementData.Entitlements[0].ExpirationDate) < new Date();
       console.log('isExpired', isExpired);
-
-      if ('CustomerAWSAccountId' in entitlementsResponse.Entitlements[0]) {
-        console.log('CustomerAWSAccountId found in entitlementsResponse, will use it instead of customer-identifier (DEPRECATION March 2026) instead');
-        customerIdentifier = entitlementsResponse.Entitlements[0].CustomerAWSAccountId;
-      }
 
       const dynamoDbParams = {
         TableName: newSubscribersTableName,
         Key: {
-          customerIdentifier: { S: customerIdentifier },
+          customerIdentifier: { S: licenseId },
         },
         UpdateExpression: 'set entitlement = :e, successfully_subscribed = :ss, subscription_expired = :se',
         ExpressionAttributeValues: {
-          ':e': { S: JSON.stringify(entitlementsResponse) },
+          ':e': { S: JSON.stringify(entitlementData) },
           ':ss': { BOOL: true },
           ':se': { BOOL: isExpired },
         },
