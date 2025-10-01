@@ -33,12 +33,12 @@ exports.handler = async (event) => {
   await Promise.all(event.Records.map(async (record) => {
     
     const body = JSON.parse(record.body);
-    console.log('body:', body, typeof body);
+    console.log('body:', body);
     const detailType = body['detail-type'];
 
     console.log('Detail Type:', detailType);   // License Updated - Manufacturer
 
-    if (detailType === 'License Updated - Manufacturer') {
+    if (detailType === 'License Updated - Manufacturer' || detailType === 'License Deprovisioned - Manufacturer') {
       console.log('Handling detail-type:', detailType);
 
       const productId = body.detail.product.id;
@@ -69,11 +69,12 @@ exports.handler = async (event) => {
         Key: {
           customerIdentifier: { S: licenseId },
         },
-        UpdateExpression: 'set entitlement = :e, successfully_subscribed = :ss, subscription_expired = :se',
+        UpdateExpression: 'set entitlement = :e, successfully_subscribed = :ss, subscription_expired = :se, updated_at = :ua',
         ExpressionAttributeValues: {
           ':e': { S: JSON.stringify(entitlementData) },
           ':ss': { BOOL: true },
           ':se': { BOOL: isExpired },
+          ':ua': { S: new Date().toISOString() },
         },
         ReturnValues: 'UPDATED_NEW',
       };

@@ -12,6 +12,7 @@ const logger = winston.createLogger({
 
 
 exports.dynamodbStreamHandler = async (event, context) => {
+  console.log('event:', JSON.stringify(event, null, 2));
   await Promise.all(event.Records.map(async (record) => {
     logger.defaultMeta = { requestId: context.awsRequestId };
     logger.debug('event', { 'data': event });
@@ -45,9 +46,9 @@ exports.dynamodbStreamHandler = async (event, context) => {
       entitlementUpdated = true;
     }
 
-    logger.debug('grantAccess', { 'data': grantAccess });
-    logger.debug('revokeAccess:', { 'data': revokeAccess });
-    logger.debug('entitlementUpdated', { 'data': entitlementUpdated });
+    logger.info('grantAccess', { 'data': grantAccess });
+    logger.info('revokeAccess:', { 'data': revokeAccess });
+    logger.info('entitlementUpdated', { 'data': entitlementUpdated });
 
     if (grantAccess || revokeAccess || entitlementUpdated) {
       let message = '';

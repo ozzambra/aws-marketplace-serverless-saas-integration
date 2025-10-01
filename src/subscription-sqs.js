@@ -40,8 +40,11 @@ exports.SQSHandler = async (event) => {
     let successfullySubscribed = false;
     let subscriptionExpired = false;
 
+    // subscribe-success - License Updated (entitlement-sqs.js)
+    // update entitlement-sqs.js to make DDB entry
     if (message.action === 'subscribe-success') {
       successfullySubscribed = true;
+    //  Purchase Agreement Ended / Status TERMINATED
     } else if (message.action === 'unsubscribe-pending') {
       console.log(`unsubscribe-pending: sending message to topic ${TopicArn}`);
       const SNSparams = {
