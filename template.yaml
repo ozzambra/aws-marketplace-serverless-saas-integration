@@ -424,6 +424,8 @@ Resources:
         detail-type:
           - "License Updated - Manufacturer"
           - "License Deprovisioned - Manufacturer"
+          - "License Updated - Proposer"
+          - "License Deprovisioned - Proposer"
         detail:
           product:
             id:
