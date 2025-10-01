@@ -1,68 +1,72 @@
+const winston = require('winston');
 const AWS = require('aws-sdk');
 const { NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region } = process.env;
 // MarketplaceEntitlementService is instantianise only in the us-east-1 https://docs.aws.amazon.com/general/latest/gr/aws-marketplace.html#marketplaceentitlement
 // const marketplaceEntitlementService = new AWS.MarketplaceEntitlementService({ apiVersion: '2017-01-11', region: 'us-east-1' });
 const dynamodb = new AWS.DynamoDB({ apiVersion: '2012-08-10', region: aws_region });
 const { MarketplaceEntitlementServiceClient, GetEntitlementsCommand } = require("@aws-sdk/client-marketplace-entitlement-service");
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.json(),
+  transports: [
+    new winston.transports.Console(),
+  ],
+});
 
 
-async function getEntitlements(productCode, customerIdentifier, customerAccountId, region) {
+async function getEntitlements(productCode, customerAccountId, region) {
   try {
-    const filter = customerAccountId 
-      ? { CUSTOMER_AWS_ACCOUNT_ID: [customerAccountId] }
-      : { CUSTOMER_IDENTIFIER: [customerIdentifier] };
-
+    logger.info(`getEntitlements: productCode: ${productCode}, customerAccountId: ${customerAccountId}, region: ${region}`);
     const entitlementParams = {
       ProductCode: productCode,
-      Filter: filter
+      Filter: [customerAccountId]
     };
-    console.log('entitlementParams:', JSON.stringify(entitlementParams, null, 2));
+    logger.debug('entitlementParams:', JSON.stringify(entitlementParams, null, 2));
 
     const mpClient = new MarketplaceEntitlementServiceClient({ region });
     const command = new GetEntitlementsCommand(entitlementParams);
     return await mpClient.send(command);
   } catch (error) {
-    console.error('Error getting entitlements:', error);
+    logger.error('Error getting entitlements:', error);
     return null;
   }
 }
 
 
 exports.handler = async (event) => {
-  console.log('event:', JSON.stringify(event, null, 2));
+  logger.info('event:', JSON.stringify(event, null, 2));
   await Promise.all(event.Records.map(async (record) => {
     
     const body = JSON.parse(record.body);
-    console.log('body:', body);
+    logger.debug('body:', body);
     const detailType = body['detail-type'];
 
-    console.log('Detail Type:', detailType);   // License Updated - Manufacturer
+    logger.debug('Detail Type:', detailType);   // License Updated - Manufacturer
 
     if (detailType === 'License Updated - Manufacturer' || detailType === 'License Deprovisioned - Manufacturer') {
-      console.log('Handling detail-type:', detailType);
+      logger.debug('Handling detail-type:', detailType);
 
       const productId = body.detail.product.id;
       const productCode = body.detail.product.code;
       const licenseId = body.detail.license.id;
       const customerAwsAccountId = body.detail.acceptor.accountId;
-      console.log('productId:', productId);
-      console.log('productCode:', productCode);
-      console.log('licenseId:', licenseId);
-      console.log('customerAwsAccountId:', customerAwsAccountId);
+      logger.debug('productId:', productId);
+      logger.debug('productCode:', productCode);
+      logger.debug('licenseId:', licenseId);
+      logger.debug('customerAwsAccountId:', customerAwsAccountId);
 
       const entitlementsResponse = await getEntitlements(
         productCode, 
-        null,
         customerAwsAccountId,
         aws_region
       );
 
-      console.log(`entitlementsResponse: ${JSON.stringify(entitlementsResponse, null, 2)}`);
+      logger.debug(`entitlementsResponse: ${JSON.stringify(entitlementsResponse, null, 2)}`);
       const { $metadata, ...entitlementData } = entitlementsResponse;
-      console.log(`entitlementData: ${JSON.stringify(entitlementData, null, 2)}`);
+      logger.debug(`entitlementData: ${JSON.stringify(entitlementData, null, 2)}`);
       const isExpired = entitlementData.hasOwnProperty("Entitlements") === false || entitlementData.Entitlements.length === 0 || 
         new Date(entitlementData.Entitlements[0].ExpirationDate) < new Date();
-      console.log('isExpired', isExpired);
+      logger.debug('isExpired', isExpired);
 
       const dynamoDbParams = {
         TableName: newSubscribersTableName,
@@ -79,11 +83,11 @@ exports.handler = async (event) => {
         ReturnValues: 'UPDATED_NEW',
       };
 
-      console.log(`dynamoDbParams: ${JSON.stringify(dynamoDbParams, null, 2)}`);
+      logger.debug(`dynamoDbParams: ${JSON.stringify(dynamoDbParams, null, 2)}`);
       await dynamodb.updateItem(dynamoDbParams).promise();
-      console.log('Successfully updated entitlement');
+      console.info('Successfully updated entitlement');
     } else {
-      console.error('Unhandled action');
+      logger.error('Unhandled action');
       throw new Error(`Unhandled action - msg: ${JSON.stringify(record)}`);
     }
   }));
