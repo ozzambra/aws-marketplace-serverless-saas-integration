@@ -454,6 +454,10 @@ Resources:
           - "Purchase Agreement Created - Acceptor"
           - "Purchase Agreement Amended - Acceptor"
           - "Purchase Agreement Ended - Acceptor"
+        detail:
+          product:
+            id:
+              - !Ref ProductId
       Targets:
         - Arn: !GetAtt SubscriptionSQSQueue.Arn
           RoleArn: !GetAtt EventBridgeExecutionRole.Arn
