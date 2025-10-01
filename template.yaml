@@ -3,19 +3,15 @@ Transform: AWS::Serverless-2016-10-31
 Description: "AWS Marketplace Serverless SaaS Integration Application"
 Globals:
   Function:
-    Timeout: 15
+    Timeout: 30
+    Tags:
+      StackName: !Ref AWS::StackName
   Api:
     Cors:
       AllowMethods: "'POST,OPTIONS'"
       AllowHeaders: "'*'"
       AllowOrigin: "'*'"
       AllowCredentials: "'*'"
-
-Globals:
-  Function:
-    Timeout: 30
-    Tags:
-      StackName: !Ref AWS::StackName
 
 Parameters:
 
@@ -1013,6 +1009,10 @@ Resources:
               } catch (e) {
                 console.error(`Failed to delete object: ${e.message}`);
               }
+            } else if (event.RequestType === 'Update') {
+              console.log("Update RequestType received");
+              console.log("No update will be done on the web s3 bucket to preserve current S3 bucket branded registration pages");
+              responseStatus = "SUCCESS";
             } else {
               const body = typeof event.ResourceProperties.IsBase64Encoded == "string" && event.ResourceProperties.IsBase64Encoded.toLowerCase() == "true" ? Buffer.from(event.ResourceProperties.Body, 'base64') : event.ResourceProperties.Body;
               console.log(`Saving s3://${event.ResourceProperties.BucketName}/${event.ResourceProperties.Key}`);
