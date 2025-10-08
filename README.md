@@ -220,6 +220,7 @@ To build and deploy your application for the first time, complete the following 
     CrossAccountId | (Optional) AWS account ID for the cross-account role.
     CrossAccountRoleName |  (Optional) Role name for the cross-account role.
     CreateRegistrationWebPage | Creates a registration page. Default value: true
+    UpdateFulfillmentURL  | (Optional) Update the MarketplaceFulfillmentUrl in your AWS Marketplace Management Portal with the value from the output key 'MarketplaceFulfillmentUrl'. The value would be in a the form of a AWS cloudfront based url. Default value: false
 
 7. Wait for the stack to complete successfully.
 
