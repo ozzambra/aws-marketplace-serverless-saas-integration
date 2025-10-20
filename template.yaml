@@ -6,6 +6,9 @@ Globals:
     Timeout: 30
     Tags:
       StackName: !Ref AWS::StackName
+    Environment:
+      Variables:
+        LOG_LEVEL: "debug"
   Api:
     Cors:
       AllowMethods: "'POST,OPTIONS'"
@@ -402,13 +405,11 @@ Resources:
   LicenseEventsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: "/aws/events/marketplace-license"
       RetentionInDays: 30
 
   PurchaseEventsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: "/aws/events/marketplace-purchase"
       RetentionInDays: 30
 
   MarketplaceSellerLicense:
@@ -483,7 +484,6 @@ Resources:
       Environment:
         Variables:
           SupportSNSArn: !Ref SupportSNSTopic
-          LOG_LEVEL: "info"
       Policies:
         - AWSLambdaDynamoDBExecutionRole
         - Statement:
