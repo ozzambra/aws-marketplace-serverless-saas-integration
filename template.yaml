@@ -55,12 +55,12 @@ Parameters:
   #   AllowedValues:
   #     - "287250355862"
 
-  SNSRegion:
-      Type: String
-      Default: "us-east-1"
-      Description: "This is the AWS region of the SNS Entitlement and Subscription topics for your product."
-      AllowedValues: 
-        - us-east-1
+  # SNSRegion:
+  #     Type: String
+  #     Default: "us-east-1"
+  #     Description: "This is the AWS region of the SNS Entitlement and Subscription topics for your product."
+  #     AllowedValues: 
+  #       - us-east-1
 
   ProductId:
     Type: String
