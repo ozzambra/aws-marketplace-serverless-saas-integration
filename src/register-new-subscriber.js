@@ -103,6 +103,7 @@ exports.registerNewSubscriber = async (event) => {
       await dynamodb.putItem(dynamoDbParams).promise();
       console.log('DynamoDB updated');
 
+      /* no longer required for EB notifications
       // Only for SaaS Contracts, check entitlement
       if (entitlementQueueUrl) {
         const SQSParams = {
@@ -123,6 +124,7 @@ exports.registerNewSubscriber = async (event) => {
         await sqs.sendMessage(SQSParams).promise();
         console.log('message sent to SQS');
       }
+      */
 
       await setBuyerNotificationHandler(contactEmail);
 
