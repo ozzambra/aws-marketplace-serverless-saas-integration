@@ -307,6 +307,7 @@ Resources:
             - Sid: AWSMarketplaceEntitlements
               Effect: Allow
               Action:
+                - aws-marketplace:DescribeEntity
                 - aws-marketplace:GetEntitlements
               Resource: "*"
       Events:
@@ -405,11 +406,33 @@ Resources:
   LicenseEventsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
+      LogGroupName: !Sub 
+        - "/aws/events/mp-saas-license-${UniqueId}"
+        - UniqueId: !Select 
+            - 0
+            - !Split 
+              - "-"
+              - !Select
+                - 2
+                - !Split
+                  - "/"
+                  - !Ref AWS::StackId
       RetentionInDays: 30
 
   PurchaseEventsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
+      LogGroupName: !Sub 
+        - "/aws/events/mp-saas-purchase-${UniqueId}"
+        - UniqueId: !Select 
+            - 0
+            - !Split 
+              - "-"
+              - !Select
+                - 2
+                - !Split
+                  - "/"
+                  - !Ref AWS::StackId
       RetentionInDays: 30
 
   MarketplaceSellerLicense:
@@ -427,6 +450,7 @@ Resources:
           product:
             id:
               - !Ref ProductId
+              #- "prod-uadlzjg3zio5i" #test
       Targets:
         - Arn: !GetAtt EntitlementSQSQueue.Arn
           RoleArn: !GetAtt EventBridgeExecutionRole.Arn
@@ -453,10 +477,10 @@ Resources:
           - "Purchase Agreement Created - Acceptor"
           - "Purchase Agreement Amended - Acceptor"
           - "Purchase Agreement Ended - Acceptor"
-        detail:
-          product:
-            id:
-              - !Ref ProductId
+        #detail:
+        #  product:
+        #    id:
+        #      - !Ref ProductId
       Targets:
         - Arn: !GetAtt SubscriptionSQSQueue.Arn
           RoleArn: !GetAtt EventBridgeExecutionRole.Arn
