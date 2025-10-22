@@ -144,10 +144,16 @@ exports.SQSHandler = async (event) => {
       logger.info(`offerId: ${offerId}`);
       const mpCatClient = new MarketplaceCatalogClient();
 
-      const responseOfferId = await mpCatClient.send(new DescribeEntityCommand({
-        Catalog: 'AWSMarketplace',
-        EntityId: offerId
-      }));
+      let responseOfferId;
+      try {
+        responseOfferId = await mpCatClient.send(new DescribeEntityCommand({
+          Catalog: 'AWSMarketplace',
+          EntityId: offerId
+        }));
+      } catch (error) {
+        logger.error(`Error DescribeEntity for offerId ${offerId}: error: ${error}`);
+        return;
+      }
       logger.info(`responseOfferId: ${JSON.stringify(responseOfferId, null, 2)}`);
       productId = responseOfferId['DetailsDocument']['ProductId'];
       logger.info(`productId: ${productId}`);
@@ -159,7 +165,7 @@ exports.SQSHandler = async (event) => {
           EntityId: productId
         }));
       } catch (error) {
-        logger.error('Error getting product details:', error);
+        logger.error(`Error DescribeEntity for productId ${productId}: error: ${error}`);
         return;
       }
       logger.info(`responseProductId: ${JSON.stringify(responseProductId, null, 2)}`);
