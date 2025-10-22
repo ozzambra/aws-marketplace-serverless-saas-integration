@@ -32,51 +32,85 @@ async function getEntitlements(productCode, customerAccountId, region) {
 }
 
 exports.SQSHandler = async (event) => {
-  logger.info('logger event:', event);
-  console.log('console event:', event);
+  logger.info('SQSHandler event:', event);
+  //console.log('console event:', event);
   await Promise.all(event.Records.map(async (record) => {
     const { body } = record;
-    console.log('body:', body);
-    console.log('typeof body:', typeof body);
+    logger.info(`body: ${body}`);
+    //console.log('body:', body);
+    //console.log('typeof body:', typeof body);
 
     const message = typeof body === 'string' ? JSON.parse(body) : body;
 
     //let { Message: message } = JSON.parse(body);
-    console.log('message:', message);
+    //console.log('message:', message);
 
     //if (typeof message === 'string' || message instanceof String) {
     //  message = JSON.parse(message);
     //}
     //console.log('message:', message);
-    logger.info('This is an info message');
 
-    //logger.info(`message: ${JSON.stringify(message, null, 2)}`);
-    
-
+    logger.info(`message: ${JSON.stringify(message, message, 2)}`);
     let successfullySubscribed = false;
     let subscriptionExpired = false;
 
     // subscribe-success - License Updated (entitlement-sqs.js)
     // update entitlement-sqs.js to make DDB entry
-    console.log('message.detail-type:', message['detail-type']);
-    if (message['detail-type'] === 'Purchase Agreement Created - Proposer') {
-    //if (message.action === 'subscribe-success') {
-      console.log('DETAILPURCHASE: Purchase Agreement Created - Proposer');
-      successfullySubscribed = true;
-    //  Purchase Agreement Ended / Status TERMINATED
-    // 'Purchase Agreement Ended - Proposer'
-    //} else if (message.action === 'unsubscribe-pending') {
-    } else if (message['detail-type'] === 'Purchase Agreement Ended - Proposer') {
-      console.log('DETAILPURCHASE: Purchase Agreement Ended - Proposer');
-      logger.info(`unsubscribe-pending: sending message to topic ${TopicArn}`);
-      const SNSparams = {
-        TopicArn,
-        Subject: 'unsubscribe pending',
-        Message: `unsubscribe pending: ${JSON.stringify(message)}`,
-      };
+    //console.log('message.detail-type:', message['detail-type']);
+    logger.info(`message.detail-type: ${message['detail-type']}`);
 
-      await SNS.publish(SNSparams).promise();
+    if (message['detail-type']?.startsWith('Purchase Agreement Ended')) {
+      // get status CANCELLED | EXPIRED | RENEWED | REPLACED | TERMINATED
+      let agreementId = null;
+      let agreementStatus = null;
+      try {
+        agreementId = message.detail.agreement.id;
+        agreementStatus = message.detail.agreement.status;
+        logger.info(`agreementId: ${agreementId} agreementStatus: ${agreementStatus}`);
+      } catch (e) {
+        logger.error('Error getting agreementId and agreementStatus:', e);
+        return;
+      }
+
+      if (!agreementStatus) {
+        logger.error('could not find agreementStatus');
+        return;
+      }
+
+      // TERMINATED == subscribe-fail
+      if (agreementStatus === 'TERMINATED') {
+        logger.info(`agreementId "${agreementId}" ${agreementStatus} (subscribe-fail): sending message to topic ${TopicArn}`);
+        const SNSparams = {
+          TopicArn,
+          Subject: `AWS Marketplace Agreement "${agreementId}" status "${agreementStatus}"`,
+          Message: `Subscription failed: ${JSON.stringify(message)}`,
+        };
+        await SNS.publish(SNSparams).promise();
+      } else if (['CANCELLED', 'EXPIRED'].includes(agreementStatus)) {
+        // Cancelled, Expired) // metering records can still be send for 1 hour after receiving this event. Sending this events for Replaced, Renewed cases will be net new
+        logger.info(`agreementId "${agreementId}" ${agreementStatus}: sending message to topic ${TopicArn}`);
+        const isoString = new Date().toISOString();
+        const SNSparams = {
+          TopicArn,
+          Subject: `AWS Marketplace Agreement "${agreementId}" status "${agreementStatus}"`,
+          Message: `Subscription ended. You have 1h from ${isoString} to send metering records: ${JSON.stringify(message)}`,
+        };
+        await SNS.publish(SNSparams).promise();
+      } else {
+        logger.info(`status "${agreementStatus}" currently not handled`);
+      }
+
+    } else if (message['detail-type']?.startsWith('Purchase Agreement Created')) {
+      // subscribe-success is equal to License updated
+      // must go into entitlement
+      //if (message.action === 'subscribe-success') {
+      //console.log(`DETAILPURCHASE: {message['detail-type']}`);
+      successfullySubscribed = true;
+      //  Purchase Agreement Ended / Status TERMINATED
+      // 'Purchase Agreement Ended - Proposer'
+      //} else if (message.action === 'unsubscribe-pending') {
     } else if (message.action === 'subscribe-fail') {
+      // Purchase Agreement Ended - Status TERMINATED
       logger.info(`subscribe-fail: sending message to topic ${TopicArn}`);
       const SNSparams = {
         TopicArn,
@@ -100,39 +134,39 @@ exports.SQSHandler = async (event) => {
     let acceptorAccountId;
     if (message['detail']['acceptor']['accountId']) {
       acceptorAccountId = message['detail']['acceptor']['accountId'];
-      console.log('acceptorAccountId:', acceptorAccountId);
+      logger.info(`acceptorAccountId: ${acceptorAccountId}`);
     }
     let offerId;
     let productId;
     let productCode;
     if (message['detail']['offer']['id']) {
       offerId = message['detail']['offer']['id'];
-      console.log('offerId:', offerId);
+      logger.info(`offerId: ${offerId}`);
       const mpCatClient = new MarketplaceCatalogClient();
 
-      const response = await mpCatClient.send(new DescribeEntityCommand({
+      const responseOfferId = await mpCatClient.send(new DescribeEntityCommand({
         Catalog: 'AWSMarketplace',
         EntityId: offerId
       }));
-      console.log('responseofferId:', response);
-      productId = response['DetailsDocument']['ProductId'];
-      console.log('productId:', productId);
+      logger.info(`responseOfferId: ${JSON.stringify(responseOfferId, null, 2)}`);
+      productId = responseOfferId['DetailsDocument']['ProductId'];
+      logger.info(`productId: ${productId}`);
 
-      let response2;
+      let responseProductId;
       try {
-        response2 = await mpCatClient.send(new DescribeEntityCommand({
+        responseProductId = await mpCatClient.send(new DescribeEntityCommand({
           Catalog: 'AWSMarketplace',
           EntityId: productId
         }));
       } catch (error) {
-        console.error('Error getting product details:', error);
+        logger.error('Error getting product details:', error);
         return;
       }
-      console.log('responseproductId:', response2);
-      productCode = response2['DetailsDocument']['Description']['ProductCode'];
-      console.log('productCode:', productCode);
+      logger.info(`responseProductId: ${JSON.stringify(responseProductId, null, 2)}`);
+      productCode = responseProductId['DetailsDocument']['Description']['ProductCode'];
+      logger.info(`productCode: ${productCode}`);
+      logger.info(`all product information together: offerId: ${offerId} productId: ${productId} productCode: ${productCode}`);
       //const productCode = details.ProductCode;
-
     }
 
     //let dynamoDbKey = message['customer-identifier']
