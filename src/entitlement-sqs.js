@@ -34,7 +34,7 @@ async function getEntitlements(productCode, customerAccountId, region) {
 
 
 exports.handler = async (event) => {
-  logger.info('event:', JSON.stringify(event, null, 2));
+  logger.info('event:', event);
   await Promise.all(event.Records.map(async (record) => {
     
     const body = JSON.parse(record.body);
