@@ -103,11 +103,6 @@ exports.registerNewSubscriber = async (event) => {
       await dynamodb.putItem(dynamoDbParams).promise();
       console.log('DynamoDB updated');
 
-<<<<<<< HEAD
-=======
-
-
->>>>>>> 748a4aa (fixing event object json format while logging)
       await setBuyerNotificationHandler(contactEmail);
 
       return lambdaResponse(200, 'Success! Registration completed. You have purchased an enterprise product that requires some additional setup. A representative from our team will be contacting you within two business days with your account credentials. Please contact Support through our website if you have any questions.');
