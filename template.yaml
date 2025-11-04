@@ -115,6 +115,7 @@ Conditions:
     Fn::Or:
       - !Equals [!Ref TypeOfSaaSListing, contracts_with_subscription]
       - !Equals [!Ref TypeOfSaaSListing, contracts]
+      - !Equals [!Ref TypeOfSaaSListing, subscriptions]
 
   CreateSubscriptionLogic:
     Fn::Or:
