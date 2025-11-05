@@ -34,16 +34,16 @@ exports.job = async () => {
       ':b': { S: 'true' },
     },
   };
-  logger.debug('params:', params);
+  logger.debug({ "params:": params });
 
   const result = await dynamodb.query(params).promise();
 
   const items = result.Items.map((i) => AWS.DynamoDB.Converter.unmarshall(i));
-  logger.debug('items:', items);
+  logger.debug({ "items": items });
   const hashMap = {};
 
   items.map((item) => {
-    const { customerIdentifier, customerAwsAccountId } = item;
+    const { customerIdentifier} = item;
 
     if (hashMap[customerIdentifier]) {
       hashMap[customerIdentifier].create_timestamps.push(item.create_timestamp);
@@ -52,13 +52,10 @@ exports.job = async () => {
       hashMap[customerIdentifier] = item;
       hashMap[customerIdentifier].create_timestamps = [item.create_timestamp];
       delete hashMap[customerIdentifier].create_timestamp;
-      if (customerAwsAccountId) {
-        hashMap[customerIdentifier].customerAwsAccountId = customerAwsAccountId;
-      }
     }
   });
 
-  logger.debug('items:', items);
+  logger.debug({ "items" :items });
 
   await asyncForEach(Object.keys(hashMap), async (hash) => {
     const SQSParams = {
@@ -70,11 +67,10 @@ exports.job = async () => {
     try {
       await sqs.sendMessage(SQSParams).promise();
       console.log(`Records submitted to queue: ${JSON.stringify(hashMap[hash])}`);
-      logger.info('Records submitted to queue:', hashMap[hash]);
+      logger.info({ 'Records submitted to queue': hashMap[hash] });
     } catch (error) {
       console.error(error, error.stack);
-      logger.error('error:', error );
-      logger.error('error.stack:', error.stack );
+      logger.error({ "error": error });
     }
   });
 
