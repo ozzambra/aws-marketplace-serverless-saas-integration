@@ -407,33 +407,13 @@ Resources:
   LicenseEventsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub 
-        - "/aws/events/mp-saas-license-${UniqueId}"
-        - UniqueId: !Select 
-            - 0
-            - !Split 
-              - "-"
-              - !Select
-                - 2
-                - !Split
-                  - "/"
-                  - !Ref AWS::StackId
+      LogGroupName: !Sub "/aws/events/mp-saas-license-${AWS::StackName}"
       RetentionInDays: 30
 
   PurchaseEventsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub 
-        - "/aws/events/mp-saas-purchase-${UniqueId}"
-        - UniqueId: !Select 
-            - 0
-            - !Split 
-              - "-"
-              - !Select
-                - 2
-                - !Split
-                  - "/"
-                  - !Ref AWS::StackId
+      LogGroupName: !Sub "/aws/events/mp-saas-purchase-${AWS::StackName}"
       RetentionInDays: 30
 
   MarketplaceSellerLicense:
