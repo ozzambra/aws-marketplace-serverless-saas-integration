@@ -1,9 +1,10 @@
 const winston = require('winston');
-const AWS = require('aws-sdk');
+const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
+const { MarketplaceMeteringClient, BatchMeterUsageCommand } = require('@aws-sdk/client-marketplace-metering');
 const { ProductCode: ProductCode, AWSMarketplaceMeteringRecordsTableName: AWSMarketplaceMeteringRecordsTableName , AWS_REGION: aws_region } = process.env;
-const dynamodb = new AWS.DynamoDB({ apiVersion: '2012-08-10', region: aws_region });
+const dynamodb = new DynamoDBClient({ region: aws_region });
 // MarketplaceMetering is instantianize in us-east-1 as all SaaS product listing ARN is stored in us-east-1.
-const marketplacemetering = new AWS.MarketplaceMetering({ apiVersion: '2016-01-14', region: 'us-east-1' });
+const marketplacemetering = new MarketplaceMeteringClient({ region: 'us-east-1' });
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.json(),
@@ -13,17 +14,18 @@ const logger = winston.createLogger({
 });
 
 exports.handler = async (event) => {
-  logger.info('event:', JSON.stringify(event, null, 2));
+  logger.debug({"event" : event});
   await Promise.all(event.Records.map(async (record) => {
     const body = JSON.parse(record.body);
-    logger.debug(`SQS message body: ${record.body}`);
+    logger.debug({"SQS message body": body});
 
     const timestmpNow = new Date();
 
+    const is12Digits = /^\d{12}$/.test(body.customerIdentifier);
     const UsageRecords = [];
     body.dimension_usage.map((r) => UsageRecords.push(
       {
-        CustomerAWSAccountId: body.customerAwsAccountId,
+        ...(is12Digits ? { CustomerAWSAccountId: body.customerIdentifier } : { CustomerIdentifier: body.customerIdentifier }),
         Dimension: r.dimension,
         Quantity: r.value,
         Timestamp: timestmpNow,
@@ -38,14 +40,15 @@ exports.handler = async (event) => {
     let meteringResponse = '';
     let meteringFailed = false;
     try {
-      logger.debug(`batchMeteringParams: ${JSON.stringify(batchMeteringParams)}`);
-      meteringResponse = await marketplacemetering.batchMeterUsage(batchMeteringParams).promise();
-      logger.debug(`meteringResponse: ${JSON.stringify(meteringResponse)}`);
+      logger.debug({"batchMeteringParams" : batchMeteringParams});
+      meteringResponse = await marketplacemetering.send(new BatchMeterUsageCommand(batchMeteringParams));
+      logger.debug({"meteringResponse" :  meteringResponse});
       if(meteringResponse.Results.find(r => r.Status !== 'Success')){
-        logger.error(`meteringResponse: ${JSON.stringify(meteringResponse)}`);
+        logger.error({"meteringResponse" :  meteringResponse});
         meteringFailed = true;
       }
     } catch (error) {
+      logger.error({'error': error});
       meteringResponse = JSON.stringify(error);
       meteringFailed = true;
     }
@@ -55,7 +58,7 @@ exports.handler = async (event) => {
         const dynamoDbParams = {
           TableName: AWSMarketplaceMeteringRecordsTableName,
           Key: {
-            customerIdentifier: { S: body.customerAwsAccountId },
+            customerIdentifier: { S: body.customerIdentifier },
             create_timestamp: { N: `${ts}` },
           },
           UpdateExpression: 'set metering_response = :x, metering_failed = :mf remove metering_pending',
@@ -66,7 +69,7 @@ exports.handler = async (event) => {
           ReturnValues: 'UPDATED_NEW',
         };
 
-        await dynamodb.updateItem(dynamoDbParams).promise();
+        await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
        
       }));
   

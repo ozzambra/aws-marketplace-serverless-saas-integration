@@ -103,29 +103,6 @@ exports.registerNewSubscriber = async (event) => {
       await dynamodb.putItem(dynamoDbParams).promise();
       console.log('DynamoDB updated');
 
-      /* no longer required for EB notifications
-      // Only for SaaS Contracts, check entitlement
-      if (entitlementQueueUrl) {
-        const SQSParams = {
-          MessageBody: `{ 
-              "Type": "Notification", 
-              "Message" : {
-                  "action" : "entitlement-updated",
-                  "customer-aws-account-id": "${CustomerAWSAccountId}",
-                  "customer-identifier" : "${CustomerIdentifier}",
-                  "product-code" : "${ProductCode}",
-                  "origin" : "lambda:${process.env.AWS_LAMBDA_FUNCTION_NAME}"
-                  } 
-              }`,
-          QueueUrl: entitlementQueueUrl,
-        };
-
-        console.log(`sending message to SQS "${entitlementQueueUrl}" with params: ${JSON.stringify(SQSParams, null, 2)}`);
-        await sqs.sendMessage(SQSParams).promise();
-        console.log('message sent to SQS');
-      }
-      */
-
       await setBuyerNotificationHandler(contactEmail);
 
       return lambdaResponse(200, 'Success! Registration completed. You have purchased an enterprise product that requires some additional setup. A representative from our team will be contacting you within two business days with your account credentials. Please contact Support through our website if you have any questions.');
