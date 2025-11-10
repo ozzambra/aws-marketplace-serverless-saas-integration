@@ -49,15 +49,17 @@ exports.handler = async (event) => {
       const productId = body.detail.product.id;
       const productCode = body.detail.product.code;
       const licenseId = body.detail.license.id;
-      const customerAwsAccountId = body.detail.acceptor.accountId;
+      const acceptorAccountId = body.detail.acceptor.accountId;
+      const agreementId = message.detail.agreement.id;
       logger.debug('productId:', productId);
       logger.debug('productCode:', productCode);
       logger.debug('licenseId:', licenseId);
-      logger.debug('customerAwsAccountId:', customerAwsAccountId);
+      logger.debug('acceptorAccountId:', acceptorAccountId);
+      logger.debug('agreementId:', agreementId);
 
       const entitlementsResponse = await getEntitlements(
         productCode, 
-        customerAwsAccountId,
+        acceptorAccountId,
         aws_region
       );
 
@@ -68,10 +70,11 @@ exports.handler = async (event) => {
         new Date(entitlementData.Entitlements[0].ExpirationDate) < new Date();
       logger.debug('isExpired', isExpired);
 
+      const dynamoDbKey = `${acceptorAccountId}-${agreementId}`;
       const dynamoDbParams = {
         TableName: newSubscribersTableName,
         Key: {
-          customerIdentifier: { S: licenseId },
+          customerIdentifier: { S: dynamoDbKey },
         },
         UpdateExpression: 'set entitlement = :e, successfully_subscribed = :ss, subscription_expired = :se, updated_at = :ua',
         ExpressionAttributeValues: {
@@ -87,8 +90,9 @@ exports.handler = async (event) => {
       await dynamodb.updateItem(dynamoDbParams).promise();
       console.info('Successfully updated entitlement');
     } else {
-      logger.error('Unhandled action');
-      throw new Error(`Unhandled action - msg: ${JSON.stringify(record)}`);
+      //logger.error('Unhandled action');
+      logger.error(`Unhandled action - msg: ${JSON.stringify(record)}`);
+      //throw new Error(`Unhandled action - msg: ${JSON.stringify(record)}`);
     }
   }));
   return {};

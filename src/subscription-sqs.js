@@ -170,7 +170,7 @@ exports.SQSHandler = async (event) => {
     }
 
     //let dynamoDbKey = message['customer-identifier']
-    let dynamoDbKey = `${acceptorAccountId}-${agreementId}`
+    let dynamoDbKey = `${acceptorAccountId}-${agreementId}`;
 
     const dynamoDbParams = {
       TableName: newSubscribersTableName,
