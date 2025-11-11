@@ -1,10 +1,9 @@
 const winston = require('winston');
-const AWS = require('aws-sdk');
-const { NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region } = process.env;
-// MarketplaceEntitlementService is instantianise only in the us-east-1 https://docs.aws.amazon.com/general/latest/gr/aws-marketplace.html#marketplaceentitlement
-// const marketplaceEntitlementService = new AWS.MarketplaceEntitlementService({ apiVersion: '2017-01-11', region: 'us-east-1' });
-const dynamodb = new AWS.DynamoDB({ apiVersion: '2012-08-10', region: aws_region });
-const { MarketplaceEntitlementServiceClient, GetEntitlementsCommand } = require("@aws-sdk/client-marketplace-entitlement-service");
+const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
+const { MarketplaceEntitlementServiceClient, GetEntitlementsCommand } = require('@aws-sdk/client-marketplace-entitlement-service');
+const { NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region, PricingModel: pricingModel } = process.env;
+// MarketplaceEntitlementService is instantiated only in us-east-1 https://docs.aws.amazon.com/general/latest/gr/aws-marketplace.html#marketplaceentitlement
+const dynamodb = new DynamoDBClient({ region: aws_region });
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.json(),
@@ -43,40 +42,56 @@ exports.handler = async (event) => {
 
     logger.debug('Detail Type:', detailType);   // License Updated - Manufacturer
 
-    if (detailType === 'License Updated - Manufacturer' || detailType === 'License Deprovisioned - Manufacturer') {
+    if (detailType === 'License Updated - Manufacturer' 
+        || detailType === 'License Deprovisioned - Manufacturer' 
+        || detailType === 'License Updated - Proposer' 
+        || detailType === 'License Deprovisioned - Proposer') {
       logger.debug('Handling detail-type:', detailType);
 
       const productId = body.detail.product.id;
       const productCode = body.detail.product.code;
       const licenseId = body.detail.license.id;
       const acceptorAccountId = body.detail.acceptor.accountId;
-      const agreementId = message.detail.agreement.id;
+      const agreementId = body.detail.agreement.id;
       logger.debug('productId:', productId);
       logger.debug('productCode:', productCode);
       logger.debug('licenseId:', licenseId);
       logger.debug('acceptorAccountId:', acceptorAccountId);
       logger.debug('agreementId:', agreementId);
 
-      const entitlementsResponse = await getEntitlements(
-        productCode, 
-        acceptorAccountId,
-        aws_region
-      );
+      let entitlementData = {};
+      let isExpired = false;
+      let updateExpression = ""
 
-      logger.debug(`entitlementsResponse: ${JSON.stringify(entitlementsResponse, null, 2)}`);
-      const { $metadata, ...entitlementData } = entitlementsResponse;
-      logger.debug(`entitlementData: ${JSON.stringify(entitlementData, null, 2)}`);
-      const isExpired = entitlementData.hasOwnProperty("Entitlements") === false || entitlementData.Entitlements.length === 0 || 
-        new Date(entitlementData.Entitlements[0].ExpirationDate) < new Date();
-      logger.debug('isExpired', isExpired);
+      // Only call GetEntitlements for contract-based pricing models
+      if (pricingModel !== 'subscriptions') {
+        const entitlementsResponse = await getEntitlements(
+          productCode, 
+          acceptorAccountId,
+          aws_region
+        );
 
-      const dynamoDbKey = `${acceptorAccountId}-${agreementId}`;
+        logger.debug(`entitlementsResponse: ${JSON.stringify(entitlementsResponse, null, 2)}`);
+        const { $metadata, ...data } = entitlementsResponse;
+        entitlementData = data;
+        logger.debug(`entitlementData: ${JSON.stringify(entitlementData, null, 2)}`);
+        isExpired = entitlementData.hasOwnProperty("Entitlements") === false || entitlementData.Entitlements.length === 0 || 
+          new Date(entitlementData.Entitlements[0].ExpirationDate) < new Date();
+        logger.debug('isExpired', isExpired);
+        updateExpression= "set entitlement = :e, successfully_subscribed = :ss, subscription_expired = :se, updated_at = :ua";
+      } else {
+        updateExpression= "set successfully_subscribed = :ss, subscription_expired = :se, updated_at = :ua";
+        logger.info('Skipping GetEntitlements call for subscriptions pricing model');
+      }
+      logger.debug("updateExpression:", data = updateExpression);
+
+      const dynamoDbKey = acceptorAccountId;
       const dynamoDbParams = {
         TableName: newSubscribersTableName,
         Key: {
           customerIdentifier: { S: dynamoDbKey },
         },
-        UpdateExpression: 'set entitlement = :e, successfully_subscribed = :ss, subscription_expired = :se, updated_at = :ua',
+        UpdateExpression: updateExpression,
         ExpressionAttributeValues: {
           ':e': { S: JSON.stringify(entitlementData) },
           ':ss': { BOOL: true },
@@ -87,8 +102,8 @@ exports.handler = async (event) => {
       };
 
       logger.debug(`dynamoDbParams: ${JSON.stringify(dynamoDbParams, null, 2)}`);
-      await dynamodb.updateItem(dynamoDbParams).promise();
-      console.info('Successfully updated entitlement');
+      await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
+      logger.info('Successfully updated entitlement');
     } else {
       //logger.error('Unhandled action');
       logger.error(`Unhandled action - msg: ${JSON.stringify(record)}`);
