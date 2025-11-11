@@ -1,7 +1,8 @@
 const winston = require('winston');
-const AWS = require('aws-sdk');
-const SNS = new AWS.SNS({ apiVersion: '2010-03-31' });
-const { SupportSNSArn: TopicArn } = process.env;
+const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
+const { unmarshall } = require('@aws-sdk/util-dynamodb');
+const { SupportSNSArn: TopicArn, AWS_REGION: aws_region } = process.env;
+const sns = new SNSClient({ region: aws_region });
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.json(),
@@ -17,8 +18,8 @@ exports.dynamodbStreamHandler = async (event, context) => {
     logger.defaultMeta = { requestId: context.awsRequestId };
     logger.debug('event', { 'data': event });
     logger.debug('context', { 'data': context });
-    const oldImage = AWS.DynamoDB.Converter.unmarshall(record.dynamodb.OldImage);
-    const newImage = AWS.DynamoDB.Converter.unmarshall(record.dynamodb.NewImage);
+    const oldImage = record.dynamodb.OldImage ? unmarshall(record.dynamodb.OldImage) : {};
+    const newImage = unmarshall(record.dynamodb.NewImage);
 
     // eslint-disable-next-line no-console
     logger.debug('OldImage', { 'data': oldImage });
@@ -74,7 +75,7 @@ exports.dynamodbStreamHandler = async (event, context) => {
 
       logger.info('Sending notification');
       logger.debug('SNSparams', { 'data': SNSparams });
-      await SNS.publish(SNSparams).promise();
+      await sns.send(new PublishCommand(SNSparams));
     }
   }));
 
