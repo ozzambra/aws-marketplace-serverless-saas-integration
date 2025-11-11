@@ -60,7 +60,7 @@ exports.handler = async (event) => {
       logger.debug('agreementId:', agreementId);
 
       let entitlementData = {};
-      let isExpired = false;
+      let isExpired = detailType === 'License Deprovisioned - Manufacturer' || detailType === 'License Deprovisioned - Proposer';
       let updateExpression = ""
 
       // Only call GetEntitlements for contract-based pricing models
@@ -83,21 +83,29 @@ exports.handler = async (event) => {
         updateExpression= "set successfully_subscribed = :ss, subscription_expired = :se, updated_at = :ua";
         logger.info('Skipping GetEntitlements call for subscriptions pricing model');
       }
-      logger.debug("updateExpression:", data = updateExpression);
+      logger.debug("updateExpression:", updateExpression);
 
       const dynamoDbKey = acceptorAccountId;
+      
+      // Build ExpressionAttributeValues based on pricing model
+      const expressionAttributeValues = {
+        ':ss': { BOOL: true },
+        ':se': { BOOL: isExpired },
+        ':ua': { S: new Date().toISOString() },
+      };
+      
+      // Only include entitlement data for contract-based pricing models
+      if (pricingModel !== 'subscriptions') {
+        expressionAttributeValues[':e'] = { S: JSON.stringify(entitlementData) };
+      }
+
       const dynamoDbParams = {
         TableName: newSubscribersTableName,
         Key: {
           customerIdentifier: { S: dynamoDbKey },
         },
         UpdateExpression: updateExpression,
-        ExpressionAttributeValues: {
-          ':e': { S: JSON.stringify(entitlementData) },
-          ':ss': { BOOL: true },
-          ':se': { BOOL: isExpired },
-          ':ua': { S: new Date().toISOString() },
-        },
+        ExpressionAttributeValues: expressionAttributeValues,
         ReturnValues: 'UPDATED_NEW',
       };
 
