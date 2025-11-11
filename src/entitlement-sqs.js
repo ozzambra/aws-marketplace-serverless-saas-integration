@@ -1,6 +1,7 @@
 const winston = require('winston');
 const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 const { MarketplaceEntitlementServiceClient, GetEntitlementsCommand } = require('@aws-sdk/client-marketplace-entitlement-service');
+const { MarketplaceAgreementServiceClient, DescribeAgreementCommand } = require('@aws-sdk/client-marketplace-agreement');
 const { NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region, PricingModel: pricingModel } = process.env;
 // MarketplaceEntitlementService is instantiated only in us-east-1 https://docs.aws.amazon.com/general/latest/gr/aws-marketplace.html#marketplaceentitlement
 const dynamodb = new DynamoDBClient({ region: aws_region });
@@ -31,6 +32,38 @@ async function getEntitlements(productCode, customerAccountId, region) {
   }
 }
 
+async function getAgreementDetails(agreementId) {
+  try {
+    logger.info(`getAgreementDetails: agreementId: ${agreementId}`);
+    const agreementClient = new MarketplaceAgreementServiceClient({ region: 'us-east-1' });
+    const command = new DescribeAgreementCommand({
+      AgreementId: agreementId
+    });
+    const response = await agreementClient.send(command);
+    logger.debug(`agreementResponse: ${JSON.stringify(response, null, 2)}`);
+    return response;
+  } catch (error) {
+    logger.error(`Error getting agreement details for ${agreementId}:`, error);
+    return null;
+  }
+}
+
+function checkForFreeTrial(agreementDetails) {
+  if (!agreementDetails || !agreementDetails.AcceptanceTerms) {
+    return false;
+  }
+  
+  // Check if any of the acceptance terms contain a free trial
+  for (const term of agreementDetails.AcceptanceTerms) {
+    if (term.FreeTrialPricingTerm) {
+      logger.info('Free trial term found in agreement');
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 
 exports.handler = async (event) => {
   logger.info('event:', event);
@@ -59,6 +92,11 @@ exports.handler = async (event) => {
       logger.debug('acceptorAccountId:', acceptorAccountId);
       logger.debug('agreementId:', agreementId);
 
+      // Fetch agreement details to check for free trial
+      const agreementDetails = await getAgreementDetails(agreementId);
+      const isFreeTrialTermPresent = checkForFreeTrial(agreementDetails);
+      logger.info(`is_free_trial_term_present: ${isFreeTrialTermPresent}`);
+
       let entitlementData = {};
       let isExpired = detailType === 'License Deprovisioned - Manufacturer' || detailType === 'License Deprovisioned - Proposer';
       let updateExpression = ""
@@ -78,9 +116,9 @@ exports.handler = async (event) => {
         isExpired = entitlementData.hasOwnProperty("Entitlements") === false || entitlementData.Entitlements.length === 0 || 
           new Date(entitlementData.Entitlements[0].ExpirationDate) < new Date();
         logger.debug('isExpired', isExpired);
-        updateExpression= "set entitlement = :e, successfully_subscribed = :ss, subscription_expired = :se, updated_at = :ua";
+        updateExpression= "set entitlement = :e, successfully_subscribed = :ss, subscription_expired = :se, is_free_trial_term_present = :ft, updated_at = :ua";
       } else {
-        updateExpression= "set successfully_subscribed = :ss, subscription_expired = :se, updated_at = :ua";
+        updateExpression= "set successfully_subscribed = :ss, subscription_expired = :se, is_free_trial_term_present = :ft, updated_at = :ua";
         logger.info('Skipping GetEntitlements call for subscriptions pricing model');
       }
       logger.debug("updateExpression:", updateExpression);
@@ -91,6 +129,7 @@ exports.handler = async (event) => {
       const expressionAttributeValues = {
         ':ss': { BOOL: true },
         ':se': { BOOL: isExpired },
+        ':ft': { BOOL: isFreeTrialTermPresent },
         ':ua': { S: new Date().toISOString() },
       };
       

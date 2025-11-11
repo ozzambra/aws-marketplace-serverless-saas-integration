@@ -13,17 +13,22 @@ const logger = winston.createLogger({
 
 
 exports.dynamodbStreamHandler = async (event, context) => {
-  console.log('event:', JSON.stringify(event, null, 2));
+  
+  console.log({ "message" : "Event parameter" , "data" : event});
   await Promise.all(event.Records.map(async (record) => {
     logger.defaultMeta = { requestId: context.awsRequestId };
-    logger.debug('event', { 'data': event });
-    logger.debug('context', { 'data': context });
     const oldImage = record.dynamodb.OldImage ? unmarshall(record.dynamodb.OldImage) : {};
-    const newImage = unmarshall(record.dynamodb.NewImage);
+    const newImage = record.dynamodb.NewImage ? unmarshall(record.dynamodb.NewImage) : {};
 
     // eslint-disable-next-line no-console
-    logger.debug('OldImage', { 'data': oldImage });
-    logger.debug('NewImage', { 'data': newImage });
+    logger.debug( {"message" : "OldImage", "data": oldImage });
+    logger.debug( {"message" : "NewImage", "data": newImage });
+    
+    if (!oldImage || Object.keys(oldImage).length === 0 || !newImage || Object.keys(newImage).length === 0) {
+      logger.info('Skipping record - oldImage or newImage is empty');
+      return;
+    }
+    
     /*
       successfully_subscribed is set true:
         - for SaaS Contracts: no email is sent but after receiving the message in the subscription topic
@@ -33,22 +38,29 @@ exports.dynamodbStreamHandler = async (event, context) => {
         - for SaaS Contracts: after detecting expired entitlement in entitlement-sqs.js
         - for SaaS Subscriptions: after reciving the unsubscribe-success message in subscription-sqs.js
     */
-    const grantAccess = newImage.successfully_subscribed === true &&
-      typeof newImage.is_free_trial_term_present !== "undefined" &&
-      (oldImage.successfully_subscribed !== true || typeof oldImage.is_free_trial_term_present === "undefined")
 
+    // const grantAccess = newImage.successfully_subscribed === true &&
+    //   typeof newImage.is_free_trial_term_present !== "undefined" &&
+    //   (oldImage.successfully_subscribed !== true || typeof oldImage.is_free_trial_term_present === "undefined")
 
-    const revokeAccess = newImage.subscription_expired === true
-      && !oldImage.subscription_expired;
-
+    let grantAccess = false;
+    let revokeAccess = false;
     let entitlementUpdated = false;
 
-    if (newImage.entitlement && oldImage.entitlement && (newImage.entitlement !== oldImage.entitlement)) {
-      entitlementUpdated = true;
+    grantAccess = (newImage.successfully_subscribed && newImage.successfully_registered)
+    && !(oldImage.successfully_registered && oldImage.successfully_subscribed )
+    
+    if  (!grantAccess) {
+      revokeAccess = newImage.subscription_expired === true
+      && !oldImage.subscription_expired;
     }
 
+    if (!grantAccess && !revokeAccess) {
+      entitlementUpdated = newImage.entitlement && oldImage.entitlement && (newImage.entitlement !== oldImage.entitlement);
+    }
+    
     logger.info('grantAccess', { 'data': grantAccess });
-    logger.info('revokeAccess:', { 'data': revokeAccess });
+    logger.info('revokeAccess', { 'data': revokeAccess });
     logger.info('entitlementUpdated', { 'data': entitlementUpdated });
 
     if (grantAccess || revokeAccess || entitlementUpdated) {

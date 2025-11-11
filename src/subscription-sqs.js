@@ -60,53 +60,54 @@ exports.SQSHandler = async (event) => {
       return;
     }
 
-    if (message['detail-type']?.startsWith('Purchase Agreement Created')) {
-      // Agreement Created
-      successfullySubscribed = true;
-      const isoString = new Date().toISOString();
-      await publishSNS(
-        `AWS Marketplace Agreement created: "${agreementId}" status "${agreementStatus}"`,
-        `Agreement created: ${JSON.stringify(message)}`
-      );
+    // if (message['detail-type']?.startsWith('Purchase Agreement Created')) {
+    //   // Agreement Created
+    //   successfullySubscribed = true;
+    //   const isoString = new Date().toISOString();
+    //   await publishSNS(
+    //     `AWS Marketplace Agreement created: "${agreementId}" status "${agreementStatus}"`,
+    //     `Agreement created: ${JSON.stringify(message)}`
+    //   );
 
-    } else if (message['detail-type']?.startsWith('Purchase Agreement Amended')) {
-      // Agreement Amended
-      const isoString = new Date().toISOString();
-      await publishSNS(
-        `AWS Marketplace Agreement amended: "${agreementId}" status "${agreementStatus}"`,
-        `Agreement amended: ${JSON.stringify(message)}`
-      );
-    } else if (message['detail-type']?.startsWith('Purchase Agreement Ended')) {
+    // } else if (message['detail-type']?.startsWith('Purchase Agreement Amended')) {
+    //   // Agreement Amended
+    //   const isoString = new Date().toISOString();
+    //   await publishSNS(
+    //     `AWS Marketplace Agreement amended: "${agreementId}" status "${agreementStatus}"`,
+    //     `Agreement amended: ${JSON.stringify(message)}`
+    //   );
+    if (message['detail-type']?.startsWith('Purchase Agreement Ended')) {
       // Agreement Ended
       // ISV's (CPPO) want to recieve notification
       // when purchase agreements is upgraded
       // get status CANCELLED | EXPIRED | RENEWED | REPLACED | TERMINATED
 
-      if (agreementStatus === 'TERMINATED') {
-        //  Purchase Agreement Ended / Status TERMINATED (subscribe-fail)
-        subscriptionExpired = true;
-        logger.info(`agreementId "${agreementId}" ${agreementStatus} (subscribe-fail): sending message to topic ${TopicArn}`);
-        const isoString = new Date().toISOString();
-        await publishSNS(
-          `AWS Marketplace Agreement "${agreementId}" status "${agreementStatus}"`,
-          `Agreement terminated ${isoString}: ${JSON.stringify(message)}`
-        );
-      } else if (['CANCELLED', 'EXPIRED'].includes(agreementStatus)) {
+      // if (agreementStatus === 'TERMINATED') {
+      //   //  Purchase Agreement Ended / Status TERMINATED (subscribe-fail)
+      //   subscriptionExpired = true;
+      //   logger.info(`agreementId "${agreementId}" ${agreementStatus} (subscribe-fail): sending message to topic ${TopicArn}`);
+      //   const isoString = new Date().toISOString();
+      //   await publishSNS(
+      //     `AWS Marketplace Agreement "${agreementId}" status "${agreementStatus}"`,
+      //     `Agreement terminated ${isoString}: ${JSON.stringify(message)}`
+      //   );
+      //} else if (['CANCELLED', 'EXPIRED'].includes(agreementStatus)) {
+      if (['CANCELLED', 'EXPIRED'].includes(agreementStatus)) {
         // Cancelled, Expired) // metering records can still be send for 1 hour after receiving this event. Sending this events for Replaced, Renewed cases will be net new
         logger.info(`agreementId "${agreementId}" ${agreementStatus}: sending message to topic ${TopicArn}`);
         const isoString = new Date().toISOString();
-        await publishSNS(
-          `AWS Marketplace Agreement "${agreementId}" status "${agreementStatus}" - send metering records`,
-          `Agreement ended. You have 1h from ${isoString} to send metering records: ${JSON.stringify(message)}`
-        );
+        // await publishSNS(
+        //   `AWS Marketplace Agreement "${agreementId}" status "${agreementStatus}" - send metering records`,
+        //   `Agreement ended. You have 1h from ${isoString} to send metering records: ${JSON.stringify(message)}`
+        // );
       } else {
         logger.info(`status "${agreementStatus}", sendinng generic message`);
         logger.info(`agreementId "${agreementId}" ${agreementStatus}: sending message to topic ${TopicArn}`);
         const isoString = new Date().toISOString();
-        await publishSNS(
-          `AWS Marketplace Agreement "${agreementId}" status "${agreementStatus}"`,
-          `Agreement ended: ${JSON.stringify(message)}`
-        );
+        // await publishSNS(
+        //   `AWS Marketplace Agreement "${agreementId}" status "${agreementStatus}"`,
+        //   `Agreement ended: ${JSON.stringify(message)}`
+        // );
       }
     // ISV's (MPPO) want to recieve notification when purchase agreements is upgraded
     } else {
@@ -169,8 +170,8 @@ exports.SQSHandler = async (event) => {
       logger.info(`all product information together: offerId: ${offerId} productId: ${productId} productCode: ${productCode}`);
     }
 
-    //let dynamoDbKey = message['customer-identifier']
-    let dynamoDbKey = `${acceptorAccountId}-${agreementId}`;
+
+    let dynamoDbKey = acceptorAccountId;
 
     const dynamoDbParams = {
       TableName: newSubscribersTableName,
@@ -189,8 +190,8 @@ exports.SQSHandler = async (event) => {
       ReturnValues: 'UPDATED_NEW',
     };
 
-    logger.debug(`updating dynamodb with params: ${JSON.stringify(dynamoDbParams, null, 2)}`);
-    await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
-    logger.info('dynamodb updated');
+    // logger.debug(`updating dynamodb with params: ${JSON.stringify(dynamoDbParams, null, 2)}`);
+    // await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
+    // logger.info('dynamodb updated');
   }));
 };

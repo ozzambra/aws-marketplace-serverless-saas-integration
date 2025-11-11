@@ -83,24 +83,44 @@ exports.registerNewSubscriber = async (event) => {
 
       // Write form inputs from ../web/index.html
       // Add customerAwsAccountId
+      // Use UpdateItem to upsert (update if exists, create if doesn't)
       const dynamoDbParams = {
         TableName: newSubscribersTableName,
-        Item: {
-          companyName: { S: companyName },
-          contactPerson: { S: contactPerson },
-          contactPhone: { S: contactPhone },
-          contactEmail: { S: contactEmail },
-          productCode: { S: ProductCode },
-          customerAwsAccountId: { S: CustomerAWSAccountId },
+        Key: {
           customerIdentifier: { S: CustomerAWSAccountId },
-          CustomerIdentifier_deprecated: { S: CustomerIdentifier || '' },
-          created: { S: datetime },
         },
+        UpdateExpression: 'set companyName = :cn, contactPerson = :cp, contactPhone = :cph, contactEmail = :ce, productCode = :pc, customerAwsAccountId = :caid, CustomerIdentifier_deprecated = :cid, successfully_registered = :sr, updated_at = :ua',
+        ExpressionAttributeValues: {
+          ':cn': { S: companyName },
+          ':cp': { S: contactPerson },
+          ':cph': { S: contactPhone },
+          ':ce': { S: contactEmail },
+          ':pc': { S: ProductCode },
+          ':caid': { S: CustomerAWSAccountId },
+          ':cid': { S: CustomerIdentifier || '' },
+          ':sr': { BOOL: true },
+          ':ua': { S: new Date().toISOString() },
+        },
+        // Only set created timestamp if the item doesn't exist
+        ConditionExpression: 'attribute_not_exists(created)',
+        ReturnValues: 'UPDATED_NEW',
       };
 
-      console.log(`updating DynamoDB with dynamoDbParams: ${JSON.stringify(dynamoDbParams, null, 2)}`);
-      await dynamodb.putItem(dynamoDbParams).promise();
-      console.log('DynamoDB updated');
+      try {
+        console.log(`updating DynamoDB with dynamoDbParams: ${JSON.stringify(dynamoDbParams, null, 2)}`);
+        await dynamodb.updateItem(dynamoDbParams).promise();
+        console.log('DynamoDB updated - new record created');
+      } catch (error) {
+        // If condition fails, it means the record exists, so update without the condition
+        if (error.code === 'ConditionalCheckFailedException') {
+          delete dynamoDbParams.ConditionExpression;
+          console.log('Record exists, updating existing record');
+          await dynamodb.updateItem(dynamoDbParams).promise();
+          console.log('DynamoDB updated - existing record modified');
+        } else {
+          throw error;
+        }
+      }
 
       await setBuyerNotificationHandler(contactEmail);
 
