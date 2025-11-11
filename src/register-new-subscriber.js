@@ -1,9 +1,8 @@
 const AWS = require('aws-sdk');
-const { NewSubscribersTableName: newSubscribersTableName, EntitlementQueueUrl: entitlementQueueUrl, MarketplaceSellerEmail: marketplaceSellerEmail, AWS_REGION:aws_region } = process.env;
-const ses = new AWS.SES({ region: aws_region});
-const marketplacemetering = new AWS.MarketplaceMetering({ apiVersion: '2016-01-14', region: aws_region });
-const dynamodb = new AWS.DynamoDB({ apiVersion: '2012-08-10', region: aws_region });
-const sqs = new AWS.SQS({ apiVersion: '2012-11-05', region: aws_region });
+const { NewSubscribersTableName: newSubscribersTableName, MarketplaceSellerEmail: marketplaceSellerEmail, AWS_REGION: aws_region } = process.env;
+const ses = new AWS.SES({ region: aws_region });
+const marketplacemetering = new AWS.MarketplaceMetering({ region: aws_region });
+const dynamodb = new AWS.DynamoDB({ region: aws_region });
 
 const lambdaResponse = (statusCode, body) => ({
   statusCode,
@@ -52,8 +51,8 @@ const setBuyerNotificationHandler = function (contactEmail) {
       return true
     })
     .catch(error => {
-        console.error('sending email via SES failed:', error);
-        return false
+      console.error('sending email via SES failed:', error);
+      return false
     });
 };
 
@@ -79,7 +78,6 @@ exports.registerNewSubscriber = async (event) => {
       // Store new subscriber data in dynamoDb
       // Once the ResolveCustomer API return the AgreementID we will use this as customerIdentifier
       const { CustomerIdentifier, ProductCode, CustomerAWSAccountId } = resolveCustomerResponse;
-      console.log(`CustomerIdentifier: ${CustomerIdentifier} ProductCode: ${ProductCode} CustomerAWSAccountId: ${CustomerAWSAccountId}`);
 
       const datetime = new Date().getTime().toString();
 
@@ -94,7 +92,8 @@ exports.registerNewSubscriber = async (event) => {
           contactEmail: { S: contactEmail },
           productCode: { S: ProductCode },
           customerAwsAccountId: { S: CustomerAWSAccountId },
-          customerIdentifier: { S: CustomerIdentifier },         
+          customerIdentifier: { S: CustomerAWSAccountId },
+          CustomerIdentifier_deprecated: { S: CustomerIdentifier || '' },
           created: { S: datetime },
         },
       };
