@@ -1,10 +1,10 @@
 const winston = require('winston');
-const AWS = require('aws-sdk');
-const { SupportSNSArn: TopicArn, NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region } = process.env;
-const dynamodb = new AWS.DynamoDB({ apiVersion: '2012-08-10', region: aws_region });
-const SNS = new AWS.SNS({ apiVersion: '2010-03-31' });
-//const { MarketplaceEntitlementServiceClient, GetEntitlementsCommand } = require("@aws-sdk/client-marketplace-entitlement-service");
+const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
+const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 const { MarketplaceCatalogClient, DescribeEntityCommand } = require('@aws-sdk/client-marketplace-catalog');
+const { SupportSNSArn: TopicArn, NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region } = process.env;
+const dynamodb = new DynamoDBClient({ region: aws_region });
+const sns = new SNSClient({ region: aws_region });
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.json(),
@@ -20,7 +20,7 @@ async function publishSNS(subject, message) {
     Subject: subject,
     Message: message,
   };
-  await SNS.publish(SNSparams).promise();
+  await sns.send(new PublishCommand(SNSparams));
 }
 
 exports.SQSHandler = async (event) => {
@@ -190,7 +190,7 @@ exports.SQSHandler = async (event) => {
     };
 
     logger.debug(`updating dynamodb with params: ${JSON.stringify(dynamoDbParams, null, 2)}`);
-    await dynamodb.updateItem(dynamoDbParams).promise();
+    await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
     logger.info('dynamodb updated');
   }));
 };
