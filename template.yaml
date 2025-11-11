@@ -51,20 +51,6 @@ Parameters:
       - "mock.agreement-marketplace"
     Description: "Event source for marketplace seller events"
 
-  # SNSAccountID:
-  #   Type: String
-  #   Default: "287250355862"
-  #   Description: "This is the AWS account hosting the SNS Entitlement and Subscription topics for your product."
-  #   AllowedValues:
-  #     - "287250355862"
-
-  # SNSRegion:
-  #     Type: String
-  #     Default: "us-east-1"
-  #     Description: "This is the AWS region of the SNS Entitlement and Subscription topics for your product."
-  #     AllowedValues: 
-  #       - us-east-1
-
   ProductId:
     Type: String
     AllowedPattern: ".*"
@@ -143,11 +129,11 @@ Resources:
     Type: AWS::IAM::Role
     Condition: CreateCrossAccount
     DependsOn: 
-     - AWSMarketplaceMeteringRecords 
-     - AWSMarketplaceSubscribers
+      - AWSMarketplaceMeteringRecords 
+      - AWSMarketplaceSubscribers
     Properties:
       RoleName:
-         !Join
+        !Join
           - '-'
           - - 'CrossAccountRoleName'
             - !Select 
@@ -174,7 +160,7 @@ Resources:
       Path: /
       Policies:
         - PolicyName:
-           !Join
+            !Join
             - '-'
             - - 'CrossAccountPolicy'
               - !Select 
@@ -299,6 +285,7 @@ Resources:
       Environment:
         Variables:
           NewSubscribersTableName: !Ref NewSubscribersTableName
+          PricingModel: !Ref TypeOfSaaSListing
       Policies:
         - DynamoDBWritePolicy:
             TableName: !Ref NewSubscribersTableName
@@ -341,6 +328,7 @@ Resources:
         Variables:
           NewSubscribersTableName: !Ref NewSubscribersTableName
           SupportSNSArn: !Ref SupportSNSTopic
+          PricingModel: !Ref TypeOfSaaSListing
       Policies:
         - DynamoDBWritePolicy:
             TableName: !Ref NewSubscribersTableName
@@ -361,24 +349,6 @@ Resources:
           Properties:
             Queue: !GetAtt SubscriptionSQSQueue.Arn
             BatchSize: 1
-      # Events:
-      #   MySQSEvent:
-      #     Type: SNS
-      #     Properties:
-      #       Topic:  !Sub 'arn:aws:sns:${SNSRegion}:${SNSAccountID}:aws-mp-subscription-notification-${GetProductCode.ProductCode}'
-      #       Region: !Sub '${SNSRegion}'
-      #       SqsSubscription:
-      #         BatchSize: 1
-      #         QueueArn: !GetAtt SubscriptionSQSQueue.Arn
-      #         QueueUrl: !Ref SubscriptionSQSQueue
-      # Events:
-      #   MySQSEvent:
-      #     Type: SNS
-      #     Properties:
-      #       #Topic: !Ref SubscriptionSNSTopic
-      #       Topic:  !Sub 'arn:aws:sns:${SNSRegion}:${SNSAccountID}:aws-mp-subscription-notification-${GetProductCode.ProductCode}'
-      #       Region: !Sub '${SNSRegion}'
-      #       SqsSubscription: true
 
   # EventBride notifications
   # Execution role
@@ -431,7 +401,6 @@ Resources:
           product:
             id:
               - !Ref ProductId
-              #- "prod-uadlzjg3zio5i" #test
       Targets:
         - Arn: !GetAtt EntitlementSQSQueue.Arn
           RoleArn: !GetAtt EventBridgeExecutionRole.Arn
@@ -449,15 +418,12 @@ Resources:
       EventPattern:
         source: [!Ref MarketplaceEventSource]
         detail-type:
-          - "Purchase Agreement Created - Manufacturer"
-          - "Purchase Agreement Created - Proposer"
-          - "Purchase Agreement Amended - Manufacturer"
-          - "Purchase Agreement Amended - Proposer"
+          # - "Purchase Agreement Created - Manufacturer"
+          # - "Purchase Agreement Created - Proposer"
+          # - "Purchase Agreement Amended - Manufacturer"
+          # - "Purchase Agreement Amended - Proposer"
           - "Purchase Agreement Ended - Manufacturer"
           - "Purchase Agreement Ended - Proposer"
-          - "Purchase Agreement Created - Acceptor"
-          - "Purchase Agreement Amended - Acceptor"
-          - "Purchase Agreement Ended - Acceptor"
         #detail:
         #  product:
         #    id:
