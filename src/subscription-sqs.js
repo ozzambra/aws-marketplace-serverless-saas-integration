@@ -2,7 +2,8 @@ const winston = require('winston');
 const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 const { MarketplaceCatalogClient, DescribeEntityCommand } = require('@aws-sdk/client-marketplace-catalog');
-const { SupportSNSArn: TopicArn, NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region } = process.env;
+const { MarketplaceAgreementClient, DescribeAgreementCommand } = require('@aws-sdk/client-marketplace-agreement');
+const { SupportSNSArn: TopicArn, NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region, ProductId: myProductId } = process.env;
 const dynamodb = new DynamoDBClient({ region: aws_region });
 const sns = new SNSClient({ region: aws_region });
 const logger = winston.createLogger({
@@ -12,7 +13,7 @@ const logger = winston.createLogger({
     new winston.transports.Console(),
   ],
 });
-
+ 
 // publish message to SNS topic
 async function publishSNS(subject, message) {
   const SNSparams = {
@@ -22,9 +23,26 @@ async function publishSNS(subject, message) {
   };
   await sns.send(new PublishCommand(SNSparams));
 }
+ 
+async function getAgreementDetails(agreementId) {
+  try {
+    logger.info(`getAgreementDetails: agreementId: ${agreementId}`);
+    const agreementClient = new MarketplaceAgreementClient({ region: 'us-east-1' });
+    const command = new DescribeAgreementCommand({
+      agreementId: agreementId
+    });
+    const response = await agreementClient.send(command);
+    logger.debug(`agreementResponse: ${JSON.stringify(response, null, 2)}`);
+    return response;
+  } catch (error) {
+    logger.error(`Error getting agreement details for ${agreementId}:`, error);
+    return null;
+  }
+}
 
 exports.SQSHandler = async (event) => {
   logger.info('SQSHandler event:', event);
+  logger.info(`checking if this is our myProductId: ${myProductId}`);
   //console.log('console event:', event);
   await Promise.all(event.Records.map(async (record) => {
     const { body } = record;
@@ -55,10 +73,40 @@ exports.SQSHandler = async (event) => {
       return;
     }
 
+    if (!agreementId) {
+      logger.error('could not find agreementId');
+      return;
+    }
+
     if (!agreementStatus) {
       logger.error('could not find agreementStatus');
       return;
     }
+
+    const agreementDetails = await getAgreementDetails(agreementId);
+    if (!agreementDetails) {
+      logger.error(`could not find agreementDetails for agreementId: ${agreementId}`);
+      return;
+    }
+    logger.info(`agreementDetails: ${JSON.stringify(agreementDetails, null, 2)}`);
+    
+    logger.info(`checking if this is our myProductId: ${myProductId}`);
+
+
+    // Check if our productId exists in the agreement
+    const hasProduct = agreementDetails.proposalSummary?.resources?.some(
+      resource => resource.id === myProductId
+    );
+
+    if (!hasProduct) {
+      logger.info(`Product ${myProductId} not found in agreement, returning early`);
+      return;
+    }
+
+    // Continue processing if product is found
+    logger.info(`Product ${myProductId} found in agreement, continuing...`);
+    // Your code continues here
+
 
     // if (message['detail-type']?.startsWith('Purchase Agreement Created')) {
     //   // Agreement Created

@@ -329,6 +329,7 @@ Resources:
           NewSubscribersTableName: !Ref NewSubscribersTableName
           SupportSNSArn: !Ref SupportSNSTopic
           PricingModel: !Ref TypeOfSaaSListing
+          ProductId: !Ref ProductId
       Policies:
         - DynamoDBWritePolicy:
             TableName: !Ref NewSubscribersTableName
@@ -341,6 +342,7 @@ Resources:
             - Sid: AWSMarketplaceEntitlements
               Effect: Allow
               Action:
+                - aws-marketplace:DescribeEntity
                 - aws-marketplace:GetEntitlements
               Resource: "*"
       Events:
