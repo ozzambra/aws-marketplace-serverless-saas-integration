@@ -3,7 +3,7 @@ const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb'
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 const { MarketplaceCatalogClient, DescribeEntityCommand } = require('@aws-sdk/client-marketplace-catalog');
 const { MarketplaceAgreementClient, DescribeAgreementCommand } = require('@aws-sdk/client-marketplace-agreement');
-const { SupportSNSArn: TopicArn, NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region, ProductId: myProductId } = process.env;
+const { SupportSNSArn: TopicArn, NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region, ProductId: productId } = process.env;
 const dynamodb = new DynamoDBClient({ region: aws_region });
 const sns = new SNSClient({ region: aws_region });
 const logger = winston.createLogger({
@@ -42,7 +42,6 @@ async function getAgreementDetails(agreementId) {
 
 exports.SQSHandler = async (event) => {
   logger.info('SQSHandler event:', event);
-  logger.info(`checking if this is our myProductId: ${myProductId}`);
   //console.log('console event:', event);
   await Promise.all(event.Records.map(async (record) => {
     const { body } = record;
@@ -53,7 +52,6 @@ exports.SQSHandler = async (event) => {
     const message = typeof body === 'string' ? JSON.parse(body) : body;
 
     logger.info(`message: ${JSON.stringify(message, message, 2)}`);
-    let successfullySubscribed = false;
     let subscriptionExpired = false;
 
     // subscribe-success - License Updated (entitlement-sqs.js)
@@ -61,7 +59,7 @@ exports.SQSHandler = async (event) => {
     // handle detail-type
     logger.info(`message.detail-type: ${message['detail-type']}`);
 
-    //agreement data
+    //try to get agreementId and agreementStatus from message
     let agreementId = null;
     let agreementStatus = null;
     try {
@@ -74,12 +72,12 @@ exports.SQSHandler = async (event) => {
     }
 
     if (!agreementId) {
-      logger.error('could not find agreementId');
+      logger.error('could not find agreementId, returning...');
       return;
     }
 
     if (!agreementStatus) {
-      logger.error('could not find agreementStatus');
+      logger.error('could not find agreementStatus, returning...');
       return;
     }
 
@@ -88,25 +86,24 @@ exports.SQSHandler = async (event) => {
       logger.error(`could not find agreementDetails for agreementId: ${agreementId}`);
       return;
     }
-    logger.info(`agreementDetails: ${JSON.stringify(agreementDetails, null, 2)}`);
+    logger.debug(`agreementDetails: ${JSON.stringify(agreementDetails, null, 2)}`);
     
-    logger.info(`checking if this is our myProductId: ${myProductId}`);
-
+    logger.info(`checking if our productId (${productId}) is in agreement...`);
 
     // Check if our productId exists in the agreement
-    const hasProduct = agreementDetails.proposalSummary?.resources?.some(
-      resource => resource.id === myProductId
+    const agreementHasOurProduct = agreementDetails.proposalSummary?.resources?.some(
+      resource => resource.id === productId
     );
+    logger.info(`Our productId: ${productId} agreementHasOurProduct: ${agreementHasOurProduct}`);
 
-    if (!hasProduct) {
-      logger.info(`Product ${myProductId} not found in agreement, returning early`);
+    if (!agreementHasOurProduct) {
+      logger.info(`Did not find our productId (${productId}) in agreement, returning...`);
       return;
     }
 
     // Continue processing if product is found
-    logger.info(`Product ${myProductId} found in agreement, continuing...`);
+    logger.info(`Our roductId ${productId} found in agreement, continuing...`);
     // Your code continues here
-
 
     // if (message['detail-type']?.startsWith('Purchase Agreement Created')) {
     //   // Agreement Created
@@ -124,6 +121,8 @@ exports.SQSHandler = async (event) => {
     //     `AWS Marketplace Agreement amended: "${agreementId}" status "${agreementStatus}"`,
     //     `Agreement amended: ${JSON.stringify(message)}`
     //   );
+
+    // We handle Purchase Agreement Ended
     if (message['detail-type']?.startsWith('Purchase Agreement Ended')) {
       // Agreement Ended
       // ISV's (CPPO) want to recieve notification
@@ -142,7 +141,12 @@ exports.SQSHandler = async (event) => {
       //} else if (['CANCELLED', 'EXPIRED'].includes(agreementStatus)) {
       if (['CANCELLED', 'EXPIRED'].includes(agreementStatus)) {
         // Cancelled, Expired) // metering records can still be send for 1 hour after receiving this event. Sending this events for Replaced, Renewed cases will be net new
-        logger.info(`agreementId "${agreementId}" ${agreementStatus}: sending message to topic ${TopicArn}`);
+        subscriptionExpired = true;
+        logger.info(`agreementId "${agreementId}" ${agreementStatus}: subscriptionExpired: ${subscriptionExpired}`);
+
+        //logger.info(`agreementId "${agreementId}" ${agreementStatus}: sending message to topic ${TopicArn}`);
+
+
         const isoString = new Date().toISOString();
         // await publishSNS(
         //   `AWS Marketplace Agreement "${agreementId}" status "${agreementStatus}" - send metering records`,
@@ -163,10 +167,12 @@ exports.SQSHandler = async (event) => {
       //throw new Error(`Unhandled action - msg: ${JSON.stringify(record)}`);
     }
 
+    /* do we need free trial for ended agreements?
     let isFreeTrialTermPresent = false;
     if (typeof message.isFreeTrialTermPresent === "string")  {
      isFreeTrialTermPresent = message.isFreeTrialTermPresent.toLowerCase() === "true";
     }
+     */
 
     // get parameters for DynamodDB
     // we need the acceptor account id and product code
@@ -177,6 +183,7 @@ exports.SQSHandler = async (event) => {
       logger.info(`acceptorAccountId: ${acceptorAccountId}`);
     }
 
+    /*
     // get offer from message
     let offerId;
     let productId;
@@ -217,29 +224,37 @@ exports.SQSHandler = async (event) => {
       logger.info(`productCode: ${productCode}`);
       logger.info(`all product information together: offerId: ${offerId} productId: ${productId} productCode: ${productCode}`);
     }
+    */
 
+    if (!acceptorAccountId) {
+      logger.error('could not find acceptorAccountId, returning...');
+      return;
+    }
 
     let dynamoDbKey = acceptorAccountId;
+
+    const updateExpression= "set successfully_subscribed = :ss, subscription_expired = :se, updated_at = :ua";
+
+    // Build ExpressionAttributeValues based on pricing model
+    const expressionAttributeValues = {
+      ':ss': { BOOL: false },
+      ':se': { BOOL: subscriptionExpired },
+      ':ua': { S: new Date().toISOString() },
+    };
 
     const dynamoDbParams = {
       TableName: newSubscribersTableName,
       Key: {
         customerIdentifier: { S: dynamoDbKey },
       },
-      UpdateExpression: 'set subscription_action = :ac, product_id = :pi, successfully_subscribed = :ss, subscription_expired = :se, is_free_trial_term_present = :ft, updated_at = :ua',
-      ExpressionAttributeValues: {
-        ':ac': { S: message['detail-type'] },
-        ':pi': { S: productId },
-        ':ss': { BOOL: successfullySubscribed },
-        ':se': { BOOL: subscriptionExpired },
-        ':ft': { BOOL: isFreeTrialTermPresent},
-        ':ua': { S: new Date().toISOString() },
-      },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeValues: expressionAttributeValues,
       ReturnValues: 'UPDATED_NEW',
     };
 
-    // logger.debug(`updating dynamodb with params: ${JSON.stringify(dynamoDbParams, null, 2)}`);
-    // await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
-    // logger.info('dynamodb updated');
+    logger.debug(`dynamoDbParams: ${JSON.stringify(dynamoDbParams, null, 2)}`);
+    await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
+    logger.info('Purchase Agreement updated successfully');
+
   }));
 };
