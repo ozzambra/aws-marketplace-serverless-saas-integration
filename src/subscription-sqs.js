@@ -67,7 +67,7 @@ exports.SQSHandler = async (event) => {
       agreementStatus = message.detail.agreement.status;
       logger.info(`agreementId: ${agreementId} agreementStatus: ${agreementStatus}`);
     } catch (e) {
-      logger.error('Error getting agreementId or agreementStatus:', e);
+      logger.error(`Error getting agreementId or agreementStatus: ${e}`);
       return;
     }
 
@@ -254,7 +254,7 @@ exports.SQSHandler = async (event) => {
 
     logger.debug(`dynamoDbParams: ${JSON.stringify(dynamoDbParams, null, 2)}`);
     await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
-    logger.info('Purchase Agreement updated successfully');
+    logger.info(`Purchase Agreement updated successfully in DynamoDB table ${newSubscribersTableName}`);
 
   }));
 };
