@@ -41,5 +41,6 @@ All log files inlucde your CloudFormation stack name. If your stack name is **mp
 
 ### Metering
 
-t.b.d.
+To test metering use the Jupyter notebook [test-metering.ipynb](test-metering.ipynb).
 
+With this notebook you put metering records into the metering DynamoDB table. 
