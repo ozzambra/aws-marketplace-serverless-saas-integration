@@ -295,6 +295,7 @@ Resources:
             - Sid: AWSMarketplaceEntitlements
               Effect: Allow
               Action:
+                - aws-marketplace:DescribeAgreement
                 - aws-marketplace:DescribeEntity
                 - aws-marketplace:GetEntitlements
               Resource: "*"
@@ -342,6 +343,7 @@ Resources:
             - Sid: AWSMarketplaceEntitlements
               Effect: Allow
               Action:
+                - aws-marketplace:DescribeAgreement
                 - aws-marketplace:DescribeEntity
                 - aws-marketplace:GetEntitlements
               Resource: "*"
