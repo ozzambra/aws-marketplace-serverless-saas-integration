@@ -36,4 +36,10 @@ All log files inlucde your CloudFormation stack name. If your stack name is **mp
 
 * Cancel a subscription or wait until a contract product expired.
 * DynamoDB keys **successfully_registered** and **subscription_expired** must be false.
+* Your tech contact should get an email with the subject **AWS Marketplace customer end of subscription**.
+
+
+### Metering
+
+t.b.d.
 
