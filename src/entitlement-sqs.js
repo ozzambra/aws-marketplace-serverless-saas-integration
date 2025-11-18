@@ -1,5 +1,6 @@
 const winston = require('winston');
 const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
+const { MarketplaceCatalogClient, DescribeEntityCommand } = require('@aws-sdk/client-marketplace-catalog');
 const { MarketplaceEntitlementServiceClient, GetEntitlementsCommand } = require('@aws-sdk/client-marketplace-entitlement-service');
 //const { MarketplaceAgreementServiceClient, DescribeAgreementCommand } = require('@aws-sdk/client-marketplace-agreement');
 const { MarketplaceAgreementClient, DescribeAgreementCommand } = require('@aws-sdk/client-marketplace-agreement');
@@ -14,7 +15,34 @@ const logger = winston.createLogger({
   ],
 });
 
+// get a product for a given productId
+// and check if it has entitlments
+async function getMarketplaceProduct(productId, region) {
+  try {
+    logger.info(`getMarketplaceProduct: productId: ${productId}`);
+    const mpCatClient = new MarketplaceCatalogClient({ region });
+    
+    const command = new DescribeEntityCommand({
+      Catalog: 'AWSMarketplace',
+      EntityId: productId
+    });
+    
+    const response = await mpCatClient.send(command);
+    logger.debug(`response: ${JSON.stringify(response, null, 2)}`);
+    
+    const hasEntitlements = response.DetailsDocument?.Dimensions?.some(
+      dimension => dimension.Types?.includes('Entitled')
+    ) || false;
+    logger.debug(`hasEntitlements: ${hasEntitlements}`);
+    
+    return { ...response, hasEntitlements, failure: false };
+  } catch (error) {
+    console.error('Error getting marketplace product:', error);
+    return { hasEntitlements: null, failure: true };
+  }
+}
 
+// call GetEntitlements API
 async function getEntitlements(productCode, customerAccountId, region) {
   try {
     logger.info(`getEntitlements: productCode: ${productCode}, customerAccountId: ${customerAccountId}, region: ${region}`);
@@ -104,8 +132,29 @@ exports.handler = async (event) => {
       let isExpired = detailType === 'License Deprovisioned - Manufacturer' || detailType === 'License Deprovisioned - Proposer';
       let updateExpression = ""
 
+      // Do we have entitlements
+      const resultProduct = await getMarketplaceProduct(productId, aws_region);
+      logger.debug(`resultProduct: ${JSON.stringify(resultProduct, null, 2)}`);
+      logger.info(`resultProduct.hasEntitlements: ${resultProduct.hasEntitlements}`);
+      logger.info(`resultProduct.failure: ${resultProduct.failure}`);
+
+      let callEntitlements = false;
+      if (resultProduct.failure) {
+        // Use fallback logic
+        logger.warning('Error getting marketplace product');
+        logger.info('Using fallback logic if pricingModel is not equal subscriptions');
+        if (pricingModel !== 'subscriptions') {
+          callEntitlements = true;
+        }
+      } else {
+        callEntitlements = resultProduct.hasEntitlements; // true or false
+      }
+      logger.info(`callEntitlements: ${callEntitlements}`);
+
       // Only call GetEntitlements for contract-based pricing models
-      if (pricingModel !== 'subscriptions') {
+      //if (pricingModel !== 'subscriptions') {
+      if (callEntitlements) {
+        logger.info('Calling GetEntitlements for contract-based pricing models'); 
         const entitlementsResponse = await getEntitlements(
           productCode, 
           acceptorAccountId,
