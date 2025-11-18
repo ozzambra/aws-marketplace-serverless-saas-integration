@@ -26,6 +26,7 @@ const addUpDimensions = (objectArray) => Object.values(objectArray.reduce((accum
 
 
 exports.job = async () => {
+  logger.info('Starting metering job')
   const params = {
     TableName: AWSMarketplaceMeteringRecordsTableName,
     IndexName: 'PendingMeteringRecordsIndex',
@@ -66,8 +67,7 @@ exports.job = async () => {
 
     try {
       await sqs.sendMessage(SQSParams).promise();
-      console.log(`Records submitted to queue: ${JSON.stringify(hashMap[hash])}`);
-      logger.info({ 'Records submitted to queue': hashMap[hash] });
+      logger.info(`Records submitted to queue: ${JSON.stringify(hashMap[hash], null, 2)}`);
     } catch (error) {
       console.error(error, error.stack);
       logger.error({ "error": error });

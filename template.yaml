@@ -496,20 +496,20 @@ Resources:
           Type: Schedule
           Properties:
             Schedule: "rate(1 hour)"
-            Name:
-             !Join
-              - '-'
-              - - 'MeteringSchedule'
-                - !Select 
-                  - 0
-                  - !Split 
-                    - "-"
-                    - !Select
-                      - 2
-                      - !Split
-                        - "/"
-                        - !Ref AWS::StackId
-            Description: SaaS Metering
+            # Name:
+            #  !Join
+            #   - '-'
+            #   - - 'MeteringSchedule'
+            #     - !Select 
+            #       - 0
+            #       - !Split 
+            #         - "-"
+            #         - !Select
+            #           - 2
+            #           - !Split
+            #             - "/"
+            #             - !Ref AWS::StackId
+            Description: !Sub SaaS metering schedule for stack ${AWS::StackName}
             Enabled: true
 
   SQSMeteringRecords:

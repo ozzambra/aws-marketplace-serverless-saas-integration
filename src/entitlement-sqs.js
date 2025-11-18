@@ -20,15 +20,17 @@ async function getEntitlements(productCode, customerAccountId, region) {
     logger.info(`getEntitlements: productCode: ${productCode}, customerAccountId: ${customerAccountId}, region: ${region}`);
     const entitlementParams = {
       ProductCode: productCode,
-      Filter: [customerAccountId]
+      Filter: {
+        CUSTOMER_AWS_ACCOUNT_ID: [customerAccountId]
+      }
     };
-    logger.debug('entitlementParams:', JSON.stringify(entitlementParams, null, 2));
+    logger.debug(`entitlementParams: ${JSON.stringify(entitlementParams, null, 2)}`);
 
     const mpClient = new MarketplaceEntitlementServiceClient({ region });
     const command = new GetEntitlementsCommand(entitlementParams);
     return await mpClient.send(command);
   } catch (error) {
-    logger.error('Error getting entitlements:', error);
+    logger.error(`Error getting entitlements: ${error}`);
     return null;
   }
 }
