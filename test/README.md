@@ -12,6 +12,19 @@ This readme contains test scenarios to verify that the
 
 ## Testing
 
+### Post deployment
+
+When you deployed the stack the **Fulfillment URL** from you deployment (CloudFormation stack) must match the URL in the 
+product definition. No matter if the deployment updated the url
+of if you did it manually. 
+
+You can use [compare_marketplace_fulfillment.py](compare_marketplace_fulfillment.py) to verify that the fulfimment url from you stack matches your product definition.
+
+Execute:
+```
+./compare_marketplace_fulfillment.py <YOUR_STACK_NAME>
+```
+
 ### Subscribing
 
 * Subscribe to a product
