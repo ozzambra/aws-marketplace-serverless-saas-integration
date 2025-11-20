@@ -2,15 +2,23 @@
 
 ![](misc/banner.png)
 
+> [**UPDATE EventBridge notifications**]
+> The serverlass integration for SaaS products has been updated to use [Amazon EventBridge notifications](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-eventbridge-integration.html). The solution no longer supports notifications via Amazon SNS from AWS Marketplace topics.
+
+> [**UPDATE CustomerIdentifier**]
+> The `CustomerIdentifier` parameter for AWS Marketplace API is scheduled for deprecation. The current implementation does not use `CustomerIdentifier` parameter anymore. There are still keys names for example in DynamoDB table that use the **name** `CustomerIdentifier` but as value `CustomerAWSAccountID` is used.
+
+
 This project demonstrates a serverless integration example for SaaS products in AWS Marketplace using AWS SAM (Serverless Application Model) for configuration, building, and deployment. It is primarily designed for users who are familiar with deploying AWS resources via CLI, need full configuration options, and want to customize the sample. For users seeking a simpler approach with less configuration, limited customization needs, or demo purposes, an alternative lab called "[Integrate your SaaS with the Serverless SaaS Integration reference](https://catalog.workshops.aws/mpseller/en-US/saas/integration-with-quickstart#background)" is available.
 
 > [!IMPORTANT]
 > **For reference purposes only**: The solution created in this repo serves as a reference demonstrating the core components needed for integrating and operating a SaaS listing in AWS Marketplace. While we periodically update the solution to reflect current integration standards, it does not adhere to any service level agreement. Proceed with caution if you intend to use this solution in your production accounts, or on production or other critical data. You are responsible for testing, securing, and optimizing AWS Content, such as sample code, as appropriate for production grade use based on your specific quality control practices and standards.
 
-If you are a new seller on AWS Marketplace, we advise you to check the following resources: 
+If you are a new seller on AWS Marketplace, we strongly recommend to check the following resources: 
 
 * [SaaS Product Requirements & Recommendations](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-guidelines.html) : This document outlines the requirements that must be met before gaining approval to publish a SaaS product to the catalog.
 * [SaaS Listing Process & Integration Guide](https://awsmp-loadforms.s3.amazonaws.com/AWS+Marketplace+-+SaaS+Integration+Guide.pdf) : This document outlines what is required to integrate with Marketplace for each SaaS pricing model. You will find integration diagrams, codes examples, FAQs, and additional resources.
+* [Managing SaaS subscription events with Amazon EventBridge](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-eventbridge-integration.html) : The documentation explains how to use Amazon EventBridge to integrate and manage SaaS products with AWS Marketplace.
 * [SaaS Integration Video](https://www.youtube.com/watch?v=glG44f-L8us) : This video guides you through the requirements and steps needed to integrate. 
 * [SaaS Pricing Video](https://www.youtube.com/watch?v=E0uWp8nhzAk) : This video guides you through the pricing options available when choosing to list a SaaS product.
 * [AWS Marketplace - Seller Guide](https://docs.aws.amazon.com/marketplace/latest/userguide/what-is-marketplace.html) : This document covers more information about creating a SaaS product, pricing, and setting up your integration.
@@ -28,44 +36,43 @@ The sample in this repository demonstrates how to use AWS SAM (Serverless applic
 
 ## Register new customers
 
-With SaaS subscriptions and SaaS contracts, your customers subscribe to your products through AWS Marketplace, but access the product on environment you manage in your AWS account. After subscribing to the product, your customer is directed to a website you create and manage as a part of your SaaS product to register their account and conﬁgure the product.
+With SaaS subscriptions and SaaS contracts, your customers subscribe to your products through AWS Marketplace, but access the product on environment you manage in your AWS account. After subscribing to the product, your customer is directed to a website you create and manage as a part of your SaaS product to register their account and configure the product.
 
 When creating your product, you provide a URL to your registration landing page. AWS Marketplace uses that URL to redirect customers to your registration landing page after they subscribe. On your software's registration URL, you collect whatever information is required to create an account for the customer. AWS Marketplace recommends collecting your customer’s email addresses if you plan to contact them through email for usage notifications.
 
-The registration landing page needs to be able to identify and accept the x-amzn-marketplace-token token in the form data from AWS Marketplace with the customer’s identiﬁer for billing. It should then pass that token value to the AWS Marketplace Metering Service and AWS Marketplace Entitlement Service APIs to resolve for the unique customer identiﬁer and corresponding product code.
+The registration landing page needs to be able to identify and accept the x-amzn-marketplace-token token in the form data from AWS Marketplace with the customer’s identifier for billing. It should then pass that token value to the AWS Marketplace Metering Service and AWS Marketplace Entitlement Service APIs to resolve for the unique customer identifier and corresponding product code.
 
-![](misc/onbording.gif)
+![](misc/saas_product_setup_account.gif)
 
 > NOTE: Deploying the static landing page is optional.
 You can choose to use your existing SaaS registration page, after collecting the data you should call the register new subscriber endpoint. Please see the deployment section.
 
 ### Implementation
 
-In this sample we created CloudFront Distribution, which can be configured to use domain/CNAME by your choice. The POST request coming from AWS Marketplace is intercepted by the Edge `src/redirect.js`, which transforms the POST request to a GET request, and passes the x-amzn-marketplace-token in the query string. 
-A static landing page hosted on S3 which takes the users inputs defined in the html form and submits them to the /subscriber API Gateway endpoint.  <<<confirm
+In this sample we created **Amazon CloudFront** Distribution, which can be configured to use domain/CNAME by your choice. The POST request coming from AWS Marketplace is send to the CloudFront Distribution. From there it send to an **Amazon API Gateway**. The API Gateway invokes an **AWS Lambda** function - `src/redirect.js` - which transforms the POST request to a GET request, and passes the `x-amzn-marketplace-token` in the query string. 
+A static landing page hosted on S3 behind CloudFront takes the users inputs defined in the html form and submits them to the /subscriber API Gateway endpoint.
 
-The handler for the /subscriber endpoint is defined in the `src/register-new-subscriber.js` file. This lambda function calls the  `resolveCustomerAPI` and validates the token. If the token is valid, a customer record is created in the `AWSMarketplaceSubscribers` DynamoDB table and the data the customer submitted in the html form is stored.  <<< add links 
+The handler for the /subscriber endpoint is defined in the `src/register-new-subscriber.js` file. This lambda function calls the [ResolveCustomer API](https://docs.aws.amazon.com/marketplace/latest/APIReference/API_marketplace-metering_ResolveCustomer.html) and validates the token. If the token is valid, a customer record is created in the `AWSMarketplaceSubscribers` DynamoDB table and the data the customer submitted in the html form is stored.
 
-![](misc/Onbording-CF.png)
+![](misc/Onbording.png)
 
 ## Grant and revoke access to your product
 
 ### Grant access to new subscribers
 
-Once the resolveCustomer endpoint return successful response, the SaaS vendors must to provide access to the solution to the new subscriber. 
-Based on the type of listing contract or subscription we have defined different conditions in the `grant-revoke-access-to-product.js` stream handler that is executed on adding new or updating existing rows.
+Once the **ResolveCustomer API** returns a successful response, the SaaS vendors must to provide access to the solution to the new subscriber. 
+Based on the type of listing, contract or subscription, we have defined different conditions in the `grant-revoke-access-to-product.js` stream handler that is executed on adding new or updating existing rows.
 
-In our implementation the Marketplace Tech Admin (The email address you have entered when deploying), will receive email when new environment needs to be provisioned or existing environment needs to be updated. AWS Marketplace strongly recommends automating the access and environment management which can be achieved by modifying the `grant-revoke-access-to-product.js` function.
+In our implementation the Marketplace Tech Admin (The email address you have entered when deploying), will receive an email when new environment needs to be provisioned or existing environment needs to be updated. AWS Marketplace strongly recommends automating the access and environment management which can be achieved by modifying the `grant-revoke-access-to-product.js` function.
 
 The property successfully subscribed is set when successful response is returned from the SQS entitlement handler for SaaS Contract based listings or after receiving **subscribe-success message from the Subscription SNS Topic in the case of AWS SaaS subscriptions in the `subscription-sqs-handler.js`.
 
 
 ### Update entitlement levels to new subscribers (SaaS Contracts only)
 
-Each time the entitlement is update we receive message on the SNS topic. 
-The lambda function `entitlement-sqs.js` on each message is calling the marketplaceEntitlementService and storing the response in the dynamoDB.
+Each time the entitlement is updated AWS Marketplace publishes a **License Updated** event to Amazon EventBride in the sellers account. An EventBridge rule sends the message to the Entitlement SQS queue. The lambda function `entitlement-sqs.js` is triggered by SQS on each message is calling the marketplaceEntitlementService when the product ist contract based. `entitlement-sqs.js` has a built-in logic to determine if your product has entitlement definitions. After gathering all data it is stored in the DynamoDB `AWSMarketplaceSubscribers` table.
 
-We are using the same DynamoDB stream to detect changes in the entailment for SaaS contracts. When the entitlement is update notification is sent to the `MarketplaceTechAdmin`.
+We are using the same DynamoDB stream to detect changes in the DynamoDB table. When an item is updated, a notification is sent to the `MarketplaceTechAdmin`.
 
 
 ### Revoke access to customers with expired contracts and cancelled subscriptions 
@@ -81,20 +88,20 @@ For SaaS subscriptions, the SaaS provider must meter for all usage, and then cus
 
 ### Implementation
 
-We have created MeteringSchedule CloudWatch Event rule that is **triggered every hour**. The `metering-hourly-job.js` gets triggered by this rule and it's querying all of the pending/unreported metering records from the `AWSMarketplaceMeteringRecords` table using the PendingMeteringRecordsIndex.
+We have created MeteringSchedule rule in Amazon EventBridge that trigger the `metering-hourly-job.js` Lambda function **hourly**. It's querying all of the pending/unreported metering records from the `AWSMarketplaceMeteringRecords` table using the PendingMeteringRecordsIndex.
 All of the pending records are aggregated based on the customerIdentifier and dimension name, and sent to the SQSMetering queue.
 The records in the `AWSMarketplaceMeteringRecords` table are expected to be inserted programmatically by your SaaS application. In this case you will have to give permissions to the service in charge of collecting usage data in your existing SaaS product to be able to write to `AWSMarketplaceMeteringRecords` table. 
 
 The lambda function `metering-sqs.js` is sending all of the queued metering records to the AWS Marketplace Metering service.
 After every call to the `batchMeterUsage` endpoint the rows are updated in the AWSMarketplaceMeteringRecords table, with the response returned from the Metering Service, which can be found in the `metering_response` field. If the request was unsuccessful the metering_failed value with be set to true and you will have to investigate the issue the error will be also stored in the `metering_response` field.
 
-The new records in the AWSMarketplaceMeteringRecords table should be stored in the following format:
+The new records in the AWSMarketplaceMeteringRecords table must be stored in the following format:
 
 
 ```javascript
 {
   "create_timestamp": {
-    "N": "113123"
+    "N": "1763634471636562122"
   },
   "customerIdentifier": {
     "S": "ifAPi5AcF3"
@@ -129,15 +136,18 @@ The new records in the AWSMarketplaceMeteringRecords table should be stored in t
 }
 ```
 
-Where the `create_timestamp` is the sort key and `customerIdentifier` is the partition key, and they are both forming the Primary key. 
-Note:The new records format is in DynamoDB JSON format. It is different than JSON. The accepted time stamp is UNIX timestamp in UTC time. 
+Where the `create_timestamp` is the sort key and `customerIdentifier` is the partition key, and they are both forming the Primary key.
+
+**Note**: You are responsible to choose a timestamp precision for your setup. For example when you use seconds precision for the `create_timestamp` and try to put more than one record within one second in the table with the same `create_timestamp` and `customerIdentifier`, only one record will be stored. You can use for example nano seconds precision for `create_timestamp` which is virtually unique.
+
+**Note**: The new records format is in DynamoDB JSON format. It is different than JSON. The accepted time stamp is UNIX timestamp in UTC time. 
 
 After the record is submitted to AWS Marketplace BatchMeterUsage API, it will be updated and it will look like this:
 
 ```javascript
 {
-  "create_timestamp": 113123,
-  "customerIdentifier": "ifAPi5AcF3",
+  "create_timestamp": 1763634471636562122,
+  "customerIdentifier": "123456789012",
   "dimension_usage": [
     {
       "dimension": "admin_users",
@@ -173,7 +183,6 @@ For simplicity, we use [AWS CloudShell](https://docs.aws.amazon.com/cloudshell/l
 
 
 To build and deploy your application for the first time, complete the following steps.
-
 
 1. Using the AWS account registered as your [AWS Marketplace Seller account](https://docs.aws.amazon.com/marketplace/latest/userguide/seller-registration-process.html), open [AWS CloudShell](https://us-east-1.console.aws.amazon.com/cloudshell). 
 
@@ -240,7 +249,12 @@ In the case of a *subscriptions* the resources market with purple circles will n
 The landing page is optional. Use the CreateRegistrationWebPage parameter.
 
 
-![](misc/AWS-Marketplace-SaaS-Integration.drawio.png)
+![](misc/AWS_Marketplace_SaaS_Integration_Overview_EventBridge.png)
+
+## Testing
+
+The directory [test](test) includes some resources that you can use to test your deployment. You can create metering records, compare if your product uses the fulfillment URL from your stack or query CloudWatch logs. For more details,
+see the [README](test/README.md) in the directory **test**.
 
 
 ## Cleanup
