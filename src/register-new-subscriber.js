@@ -1,8 +1,12 @@
-const AWS = require('aws-sdk');
+const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
+const { MarketplaceMeteringClient, ResolveCustomerCommand } = require("@aws-sdk/client-marketplace-metering");
+const { DynamoDBClient, UpdateItemCommand } = require("@aws-sdk/client-dynamodb");
+
 const { NewSubscribersTableName: newSubscribersTableName, MarketplaceSellerEmail: marketplaceSellerEmail, AWS_REGION: aws_region } = process.env;
-const ses = new AWS.SES({ region: aws_region });
-const marketplacemetering = new AWS.MarketplaceMetering({ region: aws_region });
-const dynamodb = new AWS.DynamoDB({ region: aws_region });
+
+const ses = new SESClient({ region: aws_region });
+const marketplacemetering = new MarketplaceMeteringClient({ region: aws_region });
+const dynamodb = new DynamoDBClient({ region: aws_region });
 
 const lambdaResponse = (statusCode, body) => ({
   statusCode,
@@ -46,7 +50,7 @@ const setBuyerNotificationHandler = function (contactEmail) {
   // to the email address the customer entered
   // the registering page fails with internal error
   // catching this error solves this internal error message
-  ses.sendEmail(params).promise()
+  ses.send(new SendEmailCommand(params))
     .then(result => {
       return true
     })
@@ -66,18 +70,15 @@ exports.registerNewSubscriber = async (event) => {
   // Validate the request with form inputs from ../web/index.html
   if (regToken && companyName && contactPerson && contactPhone && contactEmail) {
     try {
-      // Call resolveCustomer to validate the subscriber
-      const resolveCustomerParams = {
-        RegistrationToken: regToken,
-      };
+      const resolveCustomerResponse = await marketplacemetering.send(
+        new ResolveCustomerCommand({ RegistrationToken: regToken })
+      );
 
-      const resolveCustomerResponse = await marketplacemetering
-        .resolveCustomer(resolveCustomerParams)
-        .promise();
+      console.log('resolveCustomerResponse:', JSON.stringify(resolveCustomerResponse, null, 2));
 
       // Store new subscriber data in dynamoDb
       // Once the ResolveCustomer API return the AgreementID we will use this as customerIdentifier
-      const { CustomerIdentifier, ProductCode, CustomerAWSAccountId } = resolveCustomerResponse;
+      const { CustomerAWSAccountId, CustomerIdentifier, LicenseArn, ProductCode } = resolveCustomerResponse;
 
       const datetime = new Date().getTime().toString();
 
@@ -87,7 +88,7 @@ exports.registerNewSubscriber = async (event) => {
       const dynamoDbParams = {
         TableName: newSubscribersTableName,
         Key: {
-          customerIdentifier: { S: CustomerAWSAccountId },
+          customerIdentifier: { S: LicenseArn },
         },
         UpdateExpression: 'set companyName = :cn, contactPerson = :cp, contactPhone = :cph, contactEmail = :ce, productCode = :pc, customerAwsAccountId = :caid, CustomerIdentifier_deprecated = :cid, successfully_registered = :sr, updated_at = :ua',
         ExpressionAttributeValues: {
@@ -108,14 +109,14 @@ exports.registerNewSubscriber = async (event) => {
 
       try {
         console.log(`updating DynamoDB with dynamoDbParams: ${JSON.stringify(dynamoDbParams, null, 2)}`);
-        await dynamodb.updateItem(dynamoDbParams).promise();
+        await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
         console.log('DynamoDB updated - new record created');
       } catch (error) {
         // If condition fails, it means the record exists, so update without the condition
-        if (error.code === 'ConditionalCheckFailedException') {
+        if (error.name === 'ConditionalCheckFailedException') {
           delete dynamoDbParams.ConditionExpression;
           console.log('Record exists, updating existing record');
-          await dynamodb.updateItem(dynamoDbParams).promise();
+          await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
           console.log('DynamoDB updated - existing record modified');
         } else {
           throw error;

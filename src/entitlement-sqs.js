@@ -114,12 +114,12 @@ exports.handler = async (event) => {
 
       const productId = body.detail.product.id;
       const productCode = body.detail.product.code;
-      const licenseId = body.detail.license.id;
+      const licenseArn = body.detail.license.arn;
       const acceptorAccountId = body.detail.acceptor.accountId;
       const agreementId = body.detail.agreement.id;
       logger.debug(`productId: ${productId}`);
       logger.debug(`productCode: ${productCode}`);
-      logger.debug(`licenseId: ${licenseId}`);
+      logger.debug(`licenseArn: ${licenseArn}`);
       logger.debug(`acceptorAccountId: ${acceptorAccountId}`);
       logger.debug(`agreementId: ${agreementId}`);
 
@@ -175,8 +175,10 @@ exports.handler = async (event) => {
       }
       logger.debug(`updateExpression: ${updateExpression}`);
 
-      const dynamoDbKey = acceptorAccountId;
-      
+      //const dynamoDbKey = acceptorAccountId;
+      const dynamoDbKey = licenseArn;
+      logger.debug(`dynamoDbKey: ${dynamoDbKey}`);
+
       // Build ExpressionAttributeValues based on pricing model
       const expressionAttributeValues = {
         ':ss': { BOOL: true },
