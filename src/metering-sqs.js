@@ -21,22 +21,26 @@ exports.handler = async (event) => {
 
     const timestmpNow = new Date();
 
+    // ...(is12Digits ? { CustomerAWSAccountId: body.customerIdentifier } : { CustomerIdentifier: body.customerIdentifier }),
     const is12Digits = /^\d{12}$/.test(body.customerIdentifier);
+    const isLicenseArn = body.customerIdentifier.startsWith('arn:aws:license-manager:');
     const UsageRecords = [];
     body.dimension_usage.map((r) => UsageRecords.push(
       {
-        ...(is12Digits ? { CustomerAWSAccountId: body.customerIdentifier } : { CustomerIdentifier: body.customerIdentifier }),
+        ...(isLicenseArn && { LicenseArn: body.customerIdentifier }),
+        CustomerAWSAccountId: body.customerAwsAccountId,
         Dimension: r.dimension,
         Quantity: r.value,
         Timestamp: timestmpNow,
       },
     ));
 
-    const batchMeteringParams = {
-      ProductCode,
-      UsageRecords,
-    };
+    const batchMeteringParams = isLicenseArn 
+    ? { UsageRecords }
+    : { ProductCode, UsageRecords };
 
+
+    logger.debug({"UsageRecords" : UsageRecords});
     let meteringResponse = '';
     let meteringFailed = false;
     try {
@@ -52,26 +56,25 @@ exports.handler = async (event) => {
       meteringResponse = JSON.stringify(error);
       meteringFailed = true;
     }
+
+    await Promise.all(body.create_timestamps.map(async (ts) => {
+      const dynamoDbParams = {
+        TableName: AWSMarketplaceMeteringRecordsTableName,
+        Key: {
+          customerIdentifier: { S: body.customerIdentifier },
+          create_timestamp: { N: `${ts}` },
+        },
+        UpdateExpression: 'set metering_response = :x, metering_failed = :mf remove metering_pending',
+        ExpressionAttributeValues: {
+          ':x': { S: JSON.stringify(meteringResponse) },
+          ':mf': { BOOL: meteringFailed },
+        },
+        ReturnValues: 'UPDATED_NEW',
+      };
+
+      await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
       
-
-      await Promise.all(body.create_timestamps.map(async (ts) => {
-        const dynamoDbParams = {
-          TableName: AWSMarketplaceMeteringRecordsTableName,
-          Key: {
-            customerIdentifier: { S: body.customerIdentifier },
-            create_timestamp: { N: `${ts}` },
-          },
-          UpdateExpression: 'set metering_response = :x, metering_failed = :mf remove metering_pending',
-          ExpressionAttributeValues: {
-            ':x': { S: JSON.stringify(meteringResponse) },
-            ':mf': { BOOL: meteringFailed },
-          },
-          ReturnValues: 'UPDATED_NEW',
-        };
-
-        await dynamodb.send(new UpdateItemCommand(dynamoDbParams));
-       
-      }));
+    }));
   
   }));
 

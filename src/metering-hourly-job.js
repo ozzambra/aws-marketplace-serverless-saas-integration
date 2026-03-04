@@ -58,18 +58,25 @@ exports.job = async () => {
     }
   });
 
-  logger.debug({ "items" :items });
+  logger.debug({ "items":items });
 
+  logger.debug({"hashMap": hashMap});
   await asyncForEach(Object.keys(hashMap), async (hash) => {
+    logger.debug({"hash": hash});
     const SQSParams = {
-      MessageBody: JSON.stringify(hashMap[hash]),
+      MessageBody: JSON.stringify(hashMap[hash], (key, value) => 
+        typeof value === 'bigint' ? value.toString() : value
+      ),
       MessageGroupId: hash,
       QueueUrl,
     };
-
+    logger.debug({ "SQSParams": SQSParams });
+  
     try {
+      logger.debug('Sending message to SQS');
       await sqs.send(new SendMessageCommand(SQSParams));
-      logger.info(`Records submitted to queue: ${JSON.stringify(hashMap[hash], null, 2)}`);
+      logger.info(`Records submitted to queue: ${JSON.stringify(hashMap[hash], (key, value) => 
+        typeof value === 'bigint' ? value.toString() : value, 2)}`);
     } catch (error) {
       console.error(error, error.stack);
       logger.error({ "error": error });

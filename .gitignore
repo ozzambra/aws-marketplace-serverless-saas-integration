@@ -6,3 +6,4 @@ packaged.yaml
 deploy.sh
 *.toml
 archive
+build.log
