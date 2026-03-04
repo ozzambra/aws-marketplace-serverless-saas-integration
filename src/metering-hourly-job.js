@@ -1,8 +1,10 @@
-const AWS = require('aws-sdk');
+const { DynamoDBClient, QueryCommand } = require('@aws-sdk/client-dynamodb');
+const { unmarshall } = require('@aws-sdk/util-dynamodb');
+const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const winston = require('winston');
 const { AWS_REGION: aws_region } = process.env;
-const dynamodb = new AWS.DynamoDB({ apiVersion: '2012-08-10', region: aws_region });
-const sqs = new AWS.SQS({ apiVersion: '2012-11-05', region: aws_region });
+const dynamodb = new DynamoDBClient({ region: aws_region });
+const sqs = new SQSClient({ region: aws_region });
 const { SQSMeteringRecordsUrl: QueueUrl, AWSMarketplaceMeteringRecordsTableName: AWSMarketplaceMeteringRecordsTableName } = process.env;
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
@@ -37,9 +39,9 @@ exports.job = async () => {
   };
   logger.debug({ "params:": params });
 
-  const result = await dynamodb.query(params).promise();
+  const result = await dynamodb.send(new QueryCommand(params));
 
-  const items = result.Items.map((i) => AWS.DynamoDB.Converter.unmarshall(i));
+  const items = result.Items.map((i) => unmarshall(i));
   logger.debug({ "items": items });
   const hashMap = {};
 
@@ -66,7 +68,7 @@ exports.job = async () => {
     };
 
     try {
-      await sqs.sendMessage(SQSParams).promise();
+      await sqs.send(new SendMessageCommand(SQSParams));
       logger.info(`Records submitted to queue: ${JSON.stringify(hashMap[hash], null, 2)}`);
     } catch (error) {
       console.error(error, error.stack);
