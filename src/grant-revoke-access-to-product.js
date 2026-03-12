@@ -12,9 +12,15 @@ const logger = winston.createLogger({
 });
 
 
+function formatMessage(message) {
+  const keys = ["customerAwsAccountId", "productCode", "companyName", "contactEmail"];
+  return keys.filter((k) => k in message).map((k) => `${k}: ${message[k]}`).join("\n") + "\n\nRaw message:\n" + JSON.stringify(message, null, 2);
+}
+
+
 exports.dynamodbStreamHandler = async (event, context) => {
-  
-  console.log({ "message" : "Event parameter" , "data" : event});
+  logger.debug({"event" : event});
+  //console.log({ "message" : "Event parameter" , "data" : event});
   await Promise.all(event.Records.map(async (record) => {
     logger.defaultMeta = { requestId: context.awsRequestId };
     const oldImage = record.dynamodb.OldImage ? unmarshall(record.dynamodb.OldImage) : {};
@@ -67,21 +73,34 @@ exports.dynamodbStreamHandler = async (event, context) => {
       let message = '';
       let subject = '';
 
+      // Include productCode and customerAwsAccountId in the subject line
+      const subjectSuffix = ["productCode", "customerAwsAccountId"]
+        .filter((k) => k in newImage)
+        .map((k) => newImage[k])
+        .join(" | ");
+
+      const suffix = subjectSuffix ? ` - ${subjectSuffix}` : "";
 
       if (grantAccess) {
-        subject = 'New AWS Marketplace Subscriber';
-        message = `subscribe-success: ${JSON.stringify(newImage)}`;
+        subject = `AWS Marketplace - New Subscribtion${suffix}`;
+        message = `subscribe-success:\n${formatMessage(newImage)}`;
       } else if (revokeAccess) {
-        subject = 'AWS Marketplace customer end of subscription';
-        message = `unsubscribe-success: ${JSON.stringify(newImage)}`;
+        subject = `AWS Marketplace - Unsubscribe${suffix}`;
+        message = `unsubscribe-success:\n${formatMessage(newImage)}`;
       } else if (entitlementUpdated) {
-        subject = 'AWS Marketplace customer change of subscription';
-        message = `entitlement-updated: ${JSON.stringify(newImage)}`;
+        subject = `AWS Marketplace - Subscription Change${suffix}`;
+        message = `entitlement-updated:\n${formatMessage(newImage)}`;
       }
+
+      // Truncate subject line if it's too long
+      const MAX_SUBJECT_LENGTH = 100;
+      const truncatedSubject = subject.length > MAX_SUBJECT_LENGTH 
+        ? subject.substring(0, MAX_SUBJECT_LENGTH - 3) + '...' 
+        : subject;
 
       const SNSparams = {
         TopicArn,
-        Subject: subject,
+        Subject: truncatedSubject,
         Message: message,
       };
 
