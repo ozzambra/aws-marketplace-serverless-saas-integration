@@ -3,10 +3,10 @@
 ![](misc/banner.png)
 
 > [**UPDATE EventBridge notifications**]
-> The serverlass integration for SaaS products has been updated to use [Amazon EventBridge notifications](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-eventbridge-integration.html). The solution no longer supports notifications via Amazon SNS from AWS Marketplace topics.
+> The serverless integration for SaaS products has been updated to use [Amazon EventBridge notifications](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-eventbridge-integration.html). License and entitlement events are processed via EventBridge rules and SQS queues. The solution no longer uses Amazon SNS topics from AWS Marketplace for notifications, nor does it process purchase agreement events separately — all lifecycle events are handled through the EventBridge license event flow.
 
 > [**UPDATE CustomerIdentifier**]
-> The `CustomerIdentifier` parameter for AWS Marketplace API is scheduled for deprecation. The current implementation does not use `CustomerIdentifier` parameter anymore. There are still keys names for example in DynamoDB table that use the **name** `CustomerIdentifier` but as value `CustomerAWSAccountID` is used.
+> The `CustomerIdentifier` parameter for AWS Marketplace API is scheduled for deprecation. The current implementation uses the **License ARN** (`LicenseArn`) as the primary customer identifier. There are still key names in the DynamoDB tables that use the **name** `customerIdentifier`, but the **value** stored is the License ARN from the EventBridge event. This provides a stable, unique identifier for each customer's entitlement across the lifecycle of a subscription.
 
 
 This project demonstrates a serverless integration example for SaaS products in AWS Marketplace using AWS SAM (Serverless Application Model) for configuration, building, and deployment. It is primarily designed for users who are familiar with deploying AWS resources via CLI, need full configuration options, and want to customize the sample. For users seeking a simpler approach with less configuration, limited customization needs, or demo purposes, an alternative lab called "[Integrate your SaaS with the Serverless SaaS Integration reference](https://catalog.workshops.aws/mpseller/en-US/saas/integration-with-quickstart#background)" is available.
@@ -65,7 +65,7 @@ Based on the type of listing, contract or subscription, we have defined differen
 
 In our implementation the Marketplace Tech Admin (The email address you have entered when deploying), will receive an email when new environment needs to be provisioned or existing environment needs to be updated. AWS Marketplace strongly recommends automating the access and environment management which can be achieved by modifying the `grant-revoke-access-to-product.js` function.
 
-The property successfully subscribed is set when successful response is returned from the SQS entitlement handler for SaaS Contract based listings or after receiving **subscribe-success message from the Subscription SNS Topic in the case of AWS SaaS subscriptions in the `subscription-sqs-handler.js`.
+The property successfully subscribed is set when successful response is returned from the SQS entitlement handler for SaaS Contract based listings after receiving a **License Updated** event via Amazon EventBridge.
 
 
 ### Update entitlement levels to new subscribers (SaaS Contracts only)
@@ -104,7 +104,7 @@ The new records in the AWSMarketplaceMeteringRecords table must be stored in the
     "N": "1763634471636562122"
   },
   "customerIdentifier": {
-    "S": "ifAPi5AcF3"
+    "S": "arn:aws:license-manager::123456789012:license/lic-EXAMPLE12345"
   },
   "dimension_usage": {
     "L": [
@@ -147,7 +147,7 @@ After the record is submitted to AWS Marketplace BatchMeterUsage API, it will be
 ```javascript
 {
   "create_timestamp": 1763634471636562122,
-  "customerIdentifier": "123456789012",
+  "customerIdentifier": "arn:aws:license-manager::123456789012:license/lic-EXAMPLE12345",
   "dimension_usage": [
     {
       "dimension": "admin_users",
@@ -175,11 +175,11 @@ To build and deploy your application, you must sign in to the AWS Management Con
 * Amazon DynamoDB database
 * Amazon SQS queue
 * Amazon SNS topic
-* Amazon EventBridge
+* Amazon EventBridge rule
 
 
 > [!NOTE]  
-For simplicity, we use [AWS CloudShell](https://docs.aws.amazon.com/cloudshell/latest/userguide/welcome.html) to deploy the application since it has the required tools pre-installed. If you wish to run the deployment in an alternate shell, you'll need to install [Docker community edition](https://hub.docker.com/search/?type=edition&offering=community), [Node.js 10 (including NPM)](https://nodejs.org/en/), [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html), and [SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html).
+For simplicity, we use [AWS CloudShell](https://docs.aws.amazon.com/cloudshell/latest/userguide/welcome.html) to deploy the application since it has the required tools pre-installed. If you wish to run the deployment in an alternate shell, you'll need to install [Docker community edition](https://hub.docker.com/search/?type=edition&offering=community), [Node.js](https://nodejs.org/en/) (including NPM), [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html), and [SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html).
 
 
 To build and deploy your application for the first time, complete the following steps.
@@ -223,17 +223,16 @@ To build and deploy your application for the first time, complete the following 
     ProductId | Product id provided from AWS Marketplace
     MarketplaceTechAdminEmail | Email to be notified on changes requiring action
     MarketplaceSellerEmail | (Optional) Seller email address, verified in SES and in 'Production' mode. See [Verify an email address](https://docs.aws.amazon.com/ses/latest/DeveloperGuide/verify-email-addresses-procedure.html) for instruction to verify email addresses.
-    SNSAccountID | AWS account ID hosting the Entitlements and Subscriptions SNS topics. Leave as default.
-    SNSRegion | AWS region that the Entitlements and Subscriptions SNS topics are hosted in. Leave as default.
     CreateCrossAccountRole | Creates a cross-account role granting access to the NewSubscribersTableName and AWSMarketplaceMeteringRecordsTableName tables. Default value: false.
     CrossAccountId | (Optional) AWS account ID for the cross-account role.
     CrossAccountRoleName |  (Optional) Role name for the cross-account role.
     CreateRegistrationWebPage | Creates a registration page. Default value: true
     UpdateFulfillmentURL  | (Optional) Update the MarketplaceFulfillmentUrl in your AWS Marketplace Management Portal with the value from the output key 'MarketplaceFulfillmentUrl'. The value would be in a the form of a AWS cloudfront based url. Default value: false
+    LogRetentionInDays | Retention period in days for CloudWatch log groups. Default value: 7
 
 7. Wait for the stack to complete successfully.
 
-8. Check the email account for **MarketplaceTechAdminEmail** and approve the subscription to the SNS topic.
+8. Check the email account for **MarketplaceTechAdminEmail** and approve the subscription to the Support SNS topic to receive notifications about new subscribers and subscription changes.
 
 
 ### Diagram of created resources
@@ -250,6 +249,12 @@ The landing page is optional. Use the CreateRegistrationWebPage parameter.
 
 
 ![](misc/AWS_Marketplace_SaaS_Integration_Overview_EventBridge.png)
+
+### Event Flow
+
+The following diagram shows the detailed workflow of how events flow through the system when a customer subscribes, updates their entitlement, or cancels their subscription:
+
+![](misc/AWS_Marketplace_SaaS_Integration_Workflow_EventBridge.png)
 
 ## Testing
 
