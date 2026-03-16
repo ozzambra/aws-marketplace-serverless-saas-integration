@@ -1,6 +1,6 @@
 const redirectToProductPage = process.env.VARIABLE_NAME || 'false';
 
-exports.redirecthandler = async(event, context, callback) => {
+exports.redirecthandler = async (event) => {
   console.log("event:", event);
   const redirectUrl = "/?" + event['body'];
   console.log("redirectUrl:", redirectUrl);

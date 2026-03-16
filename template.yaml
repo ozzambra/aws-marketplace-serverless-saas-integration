@@ -47,8 +47,6 @@ Parameters:
     Default: "aws.agreement-marketplace"
     AllowedValues:
       - "aws.agreement-marketplace"
-      - "aws.agreement-marketplace-test"
-      - "mock.agreement-marketplace"
     Description: "Event source for marketplace seller events"
 
   ProductId:
@@ -95,6 +93,12 @@ Parameters:
     AllowedValues:
       - "true"
       - "false"
+
+  LogRetentionInDays:
+    Type: Number
+    Default: 7
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653]
+    Description: "Retention period in days for CloudWatch log groups"
 
 Conditions:
   CreateEntitlementLogic:
@@ -225,12 +229,57 @@ Resources:
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
   
+  # ---- Lambda Log Groups ----
+
+  RegisterNewMarketplaceCustomerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-RegisterNewMarketplaceCustomer"
+      RetentionInDays: !Ref LogRetentionInDays
+
+  EntitlementSQSHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-EntitlementSQSHandler"
+      RetentionInDays: !Ref LogRetentionInDays
+
+  GrantOrRevokeAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-GrantOrRevokeAccess"
+      RetentionInDays: !Ref LogRetentionInDays
+
+  HourlyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-Hourly"
+      RetentionInDays: !Ref LogRetentionInDays
+
+  MeteringSQSHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-MeteringSQSHandler"
+      RetentionInDays: !Ref LogRetentionInDays
+
+  LambdaRedirectPostRequestsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: CreateWeb
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-LambdaRedirectPostRequests"
+      RetentionInDays: !Ref LogRetentionInDays
+
+  # ---- Lambda Functions ----
+
   RegisterNewMarketplaceCustomer:
     Type: AWS::Serverless::Function
+    DependsOn: RegisterNewMarketplaceCustomerLogGroup
     Properties:
+      FunctionName: !Sub "${AWS::StackName}-RegisterNewMarketplaceCustomer"
+      LoggingConfig:
+        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-RegisterNewMarketplaceCustomer"
       CodeUri: src/
       Handler: register-new-subscriber.registerNewSubscriber
-      Runtime: nodejs22.x
+      Runtime: nodejs24.x
       Environment:
         Variables:
           NewSubscribersTableName: !Ref NewSubscribersTableName
@@ -278,10 +327,14 @@ Resources:
   EntitlementSQSHandler:
     Type: AWS::Serverless::Function
     Condition: CreateEntitlementLogic
+    DependsOn: EntitlementSQSHandlerLogGroup
     Properties:
+      FunctionName: !Sub "${AWS::StackName}-EntitlementSQSHandler"
+      LoggingConfig:
+        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-EntitlementSQSHandler"
       CodeUri: src
       Handler: entitlement-sqs.handler
-      Runtime: nodejs22.x
+      Runtime: nodejs24.x
       Environment:
         Variables:
           NewSubscribersTableName: !Ref NewSubscribersTableName
@@ -305,54 +358,6 @@ Resources:
           Properties:
             Queue: !GetAtt EntitlementSQSQueue.Arn
             BatchSize: 1
-      # Events:
-      #   MySQSEvent:
-      #     Type: SNS
-      #     Properties:
-      #       Topic:  !Sub 'arn:aws:sns:${SNSRegion}:${SNSAccountID}:aws-mp-entitlement-notification-${GetProductCode.ProductCode}'
-      #       Region: !Sub '${SNSRegion}'
-      #       SqsSubscription:
-      #         BatchSize: 1
-      #         QueueArn: !GetAtt EntitlementSQSQueue.Arn
-      #         QueueUrl: !Ref EntitlementSQSQueue
-
-  SubscriptionSQSQueue:
-    Type: AWS::SQS::Queue
-  
-  SubscriptionSQSHandler:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: src
-      Handler: subscription-sqs.SQSHandler
-      Runtime: nodejs22.x
-      Environment:
-        Variables:
-          NewSubscribersTableName: !Ref NewSubscribersTableName
-          SupportSNSArn: !Ref SupportSNSTopic
-          PricingModel: !Ref TypeOfSaaSListing
-          ProductId: !Ref ProductId
-      Policies:
-        - DynamoDBWritePolicy:
-            TableName: !Ref NewSubscribersTableName
-        - Statement:
-            - Sid: SNSPublish
-              Effect: Allow
-              Action:
-                - sns:Publish
-              Resource: !Ref SupportSNSTopic
-            - Sid: AWSMarketplaceEntitlements
-              Effect: Allow
-              Action:
-                - aws-marketplace:DescribeAgreement
-                - aws-marketplace:DescribeEntity
-                - aws-marketplace:GetEntitlements
-              Resource: "*"
-      Events:
-        SQSTrigger:
-          Type: SQS
-          Properties:
-            Queue: !GetAtt SubscriptionSQSQueue.Arn
-            BatchSize: 1
 
   # EventBride notifications
   # Execution role
@@ -375,20 +380,13 @@ Resources:
                 Action: sqs:SendMessage
                 Resource:
                   - !GetAtt EntitlementSQSQueue.Arn
-                  - !GetAtt SubscriptionSQSQueue.Arn
 
   # Log groups
   LicenseEventsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "/aws/events/mp-saas-license-${AWS::StackName}"
-      RetentionInDays: 30
-
-  PurchaseEventsLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/events/mp-saas-purchase-${AWS::StackName}"
-      RetentionInDays: 30
+      RetentionInDays: !Ref LogRetentionInDays
 
   MarketplaceSellerLicense:
     Type: AWS::Events::Rule
@@ -415,34 +413,6 @@ Resources:
         - Key: "StackName"
           Value: !Ref AWS::StackName
 
-  MarketplaceSellerPurchase:
-    Type: AWS::Events::Rule
-    Properties:
-      EventBusName: default
-      EventPattern:
-        source: [!Ref MarketplaceEventSource]
-        detail-type:
-          # - "Purchase Agreement Created - Manufacturer"
-          # - "Purchase Agreement Created - Proposer"
-          # - "Purchase Agreement Amended - Manufacturer"
-          # - "Purchase Agreement Amended - Proposer"
-          - "Purchase Agreement Ended - Manufacturer"
-          - "Purchase Agreement Ended - Proposer"
-        #detail:
-        #  product:
-        #    id:
-        #      - !Ref ProductId
-      Targets:
-        - Arn: !GetAtt SubscriptionSQSQueue.Arn
-          RoleArn: !GetAtt EventBridgeExecutionRole.Arn
-          Id: "SQSTarget"
-        - Arn: !GetAtt PurchaseEventsLogGroup.Arn
-          Id: "LogsTarget"
-      Tags:
-        - Key: "StackName"
-          Value: !Ref AWS::StackName
-
-
   SupportSNSTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -452,10 +422,14 @@ Resources:
 
   GrantOrRevokeAccess:
     Type: AWS::Serverless::Function
+    DependsOn: GrantOrRevokeAccessLogGroup
     Properties:
+      FunctionName: !Sub "${AWS::StackName}-GrantOrRevokeAccess"
+      LoggingConfig:
+        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-GrantOrRevokeAccess"
       CodeUri: src
       Handler: grant-revoke-access-to-product.dynamodbStreamHandler
-      Runtime: nodejs22.x
+      Runtime: nodejs24.x
       Environment:
         Variables:
           SupportSNSArn: !Ref SupportSNSTopic
@@ -478,10 +452,14 @@ Resources:
   Hourly:
     Type: AWS::Serverless::Function
     Condition: CreateSubscriptionLogic
+    DependsOn: HourlyLogGroup
     Properties:
+      FunctionName: !Sub "${AWS::StackName}-Hourly"
+      LoggingConfig:
+        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-Hourly"
       CodeUri: src
       Handler: metering-hourly-job.job
-      Runtime: nodejs22.x
+      Runtime: nodejs24.x
       Environment:
         Variables:
           SQSMeteringRecordsUrl: !Ref SQSMeteringRecords
@@ -496,19 +474,6 @@ Resources:
           Type: Schedule
           Properties:
             Schedule: "rate(1 hour)"
-            # Name:
-            #  !Join
-            #   - '-'
-            #   - - 'MeteringSchedule'
-            #     - !Select 
-            #       - 0
-            #       - !Split 
-            #         - "-"
-            #         - !Select
-            #           - 2
-            #           - !Split
-            #             - "/"
-            #             - !Ref AWS::StackId
             Description: !Sub SaaS metering schedule for stack ${AWS::StackName}
             Enabled: true
 
@@ -536,10 +501,14 @@ Resources:
   MeteringSQSHandler:
     Type: AWS::Serverless::Function
     Condition: CreateSubscriptionLogic
+    DependsOn: MeteringSQSHandlerLogGroup
     Properties:
+      FunctionName: !Sub "${AWS::StackName}-MeteringSQSHandler"
+      LoggingConfig:
+        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-MeteringSQSHandler"
       CodeUri: src
       Handler: metering-sqs.handler
-      Runtime: nodejs22.x
+      Runtime: nodejs24.x
       Environment:
         Variables:
           ProductCode: !GetAtt GetProductCode.ProductCode
@@ -610,8 +579,12 @@ Resources:
   LambdaRedirectPostRequests:
     Type: AWS::Serverless::Function
     Condition: CreateWeb
+    DependsOn: LambdaRedirectPostRequestsLogGroup
     Properties:
-      Runtime: nodejs22.x
+      FunctionName: !Sub "${AWS::StackName}-LambdaRedirectPostRequests"
+      LoggingConfig:
+        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-LambdaRedirectPostRequests"
+      Runtime: nodejs24.x
       CodeUri: src/
       Handler: redirect.redirecthandler
       AssumeRolePolicyDocument:
@@ -1073,7 +1046,7 @@ Resources:
                   - !Ref AWS::StackId
       Handler: index.handler
       Role: !GetAtt S3ContentCustomResourceRole.Arn
-      Runtime: nodejs22.x
+      Runtime: nodejs24.x
   # Role for custom Lambda function to log activity and put/delete objects in S3 bucket created in this template
   S3ContentCustomResourceRole:
     Type: AWS::IAM::Role
@@ -1130,7 +1103,7 @@ Resources:
                 - !Split
                   - "/"
                   - !Ref AWS::StackId
-      RetentionInDays: 7
+      RetentionInDays: !Ref LogRetentionInDays
   
   GetProductCode:
     Type: Custom::Lambda
@@ -1142,7 +1115,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       Role: !GetAtt CAPILambdasExecutionRole.Arn
-      Runtime: nodejs22.x
+      Runtime: nodejs24.x
       Handler: index.handler
       Code: 
         ZipFile: |
@@ -1227,7 +1200,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       Role: !GetAtt CAPILambdasExecutionRole.Arn
-      Runtime: nodejs22.x
+      Runtime: nodejs24.x
       Handler: index.handler
       Code: 
         ZipFile: |
