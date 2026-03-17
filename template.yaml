@@ -42,13 +42,6 @@ Parameters:
       - contracts
       - subscriptions
 
-  MarketplaceEventSource:
-    Type: String
-    Default: "aws.agreement-marketplace"
-    AllowedValues:
-      - "aws.agreement-marketplace"
-    Description: "Event source for marketplace seller events"
-
   ProductId:
     Type: String
     AllowedPattern: ".*"
@@ -381,7 +374,7 @@ Resources:
     Properties:
       EventBusName: default
       EventPattern:
-        source: [!Ref MarketplaceEventSource]
+        source: ["aws.agreement-marketplace"]
         detail-type:
           - "License Updated - Manufacturer"
           - "License Deprovisioned - Manufacturer"
@@ -1195,7 +1188,7 @@ Resources:
           const { MarketplaceCatalogClient, DescribeEntityCommand, StartChangeSetCommand } = require("@aws-sdk/client-marketplace-catalog");
           const response = require('cfn-response');
           exports.handler = async (event, context) => {
-            console.log("REQUEST RECEIVED:\n" + JSON.stringify(event));
+            console.log("event:\n" + JSON.stringify(event));
             const client = new MarketplaceCatalogClient({ region: 'us-east-1' });
             const productId = event.ResourceProperties.ProductId;
             const fulfillmentUrl = event.ResourceProperties.FulfillmentUrl;
@@ -1209,7 +1202,6 @@ Resources:
                     });
                     let resp = await client.send(command);
                     console.debug("DescribeEntityCommand:\n" + JSON.stringify(resp));
-                    
                     
                     const fulfillmentUrlID = resp.DetailsDocument.Versions[0].DeliveryOptions[0].Id
                     console.debug("FullfilmentId:\n" + fulfillmentUrlID);
@@ -1237,7 +1229,8 @@ Resources:
                           },
                           Details: JSON.stringify(details)
                         }
-                      ]
+                      ],
+                      ChangeSetName: `Serverless SaaS Deployment: update fulfillment URL for product ${productId}`.substring(0, 99),
                     };
                     console.debug("startChangeSetInput:\n" + JSON.stringify(startChangeSetInput));
                     
