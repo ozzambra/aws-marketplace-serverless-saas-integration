@@ -2,16 +2,16 @@
 
 ![](misc/banner.png)
 
-> [**UPDATE EventBridge notifications**]
-> The serverless integration for SaaS products has been updated to use [Amazon EventBridge notifications](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-eventbridge-integration.html). License and entitlement events are processed via EventBridge rules and SQS queues. The solution no longer uses Amazon SNS topics from AWS Marketplace for notifications, nor does it process purchase agreement events separately — all lifecycle events are handled through the EventBridge license event flow.
+> [**UPDATE March 2026 EventBridge notifications**]
+> The serverless integration for SaaS products has been updated to use [Amazon EventBridge notifications](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-eventbridge-integration.html). License events are processed via EventBridge rules and SQS queues. The solution no longer uses Amazon SNS topics from AWS Marketplace for notifications. All lifecycle events are handled by [EventBridge license events](https://docs.aws.amazon.com/marketplace/latest/userguide/notifications-eventbridge.html#events-for-licenses).
 
-> [**UPDATE CustomerIdentifier**]
-> The `CustomerIdentifier` parameter for AWS Marketplace API is scheduled for deprecation. The current implementation uses the **License ARN** (`LicenseArn`) as the primary customer identifier. There are still key names in the DynamoDB tables that use the **name** `customerIdentifier`, but the **value** stored is the License ARN from the EventBridge event. This provides a stable, unique identifier for each customer's entitlement across the lifecycle of a subscription.
+> [**UPDATE March 2026 CustomerIdentifier**]
+> The `CustomerIdentifier` parameter for AWS Marketplace API is scheduled for deprecation. The current implementation uses the **License ARN** (`LicenseArn`) as the primary customer identifier. There are still key names in the DynamoDB tables that use the **name** `customerIdentifier`, but the **value** stored is the License ARN from the EventBridge event. This provides a stable, unique identifier for each customer's entitlement across the lifecycle of a subscription. By using the **License ARN** as `customerIdentifier` the solution supports already [Concurrent Agreements](https://aws.amazon.com/about-aws/whats-new/2026/02/concurrent-agreements-february/) on AWS Marketplace.
 
 
-This project demonstrates a serverless integration example for SaaS products in AWS Marketplace using AWS SAM (Serverless Application Model) for configuration, building, and deployment. It is primarily designed for users who are familiar with deploying AWS resources via CLI, need full configuration options, and want to customize the sample. For users seeking a simpler approach with less configuration, limited customization needs, or demo purposes, an alternative lab called "[Integrate your SaaS with the Serverless SaaS Integration reference](https://catalog.workshops.aws/mpseller/en-US/saas/integration-with-quickstart#background)" is available.
+This project demonstrates a serverless integration example to [onboard customers](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-product-customer-setup.html) for SaaS products in AWS Marketplace using AWS SAM (Serverless Application Model) for configuration, building, and deployment. It is primarily designed for users who are familiar with deploying AWS resources via CLI, need full configuration options, and want to customize the sample. For users seeking a simpler approach with less configuration, limited customization needs, or demo purposes, an alternative lab called "[Integrate your SaaS with the Serverless SaaS Integration reference](https://catalog.workshops.aws/mpseller/en-US/saas/integration-with-quickstart#background)" is available.
 
-> [!IMPORTANT]
+> [**!IMPORTANT**]
 > **For reference purposes only**: The solution created in this repo serves as a reference demonstrating the core components needed for integrating and operating a SaaS listing in AWS Marketplace. While we periodically update the solution to reflect current integration standards, it does not adhere to any service level agreement. Proceed with caution if you intend to use this solution in your production accounts, or on production or other critical data. You are responsible for testing, securing, and optimizing AWS Content, such as sample code, as appropriate for production grade use based on your specific quality control practices and standards.
 
 If you are a new seller on AWS Marketplace, we strongly recommend to check the following resources: 
@@ -40,7 +40,8 @@ With SaaS subscriptions and SaaS contracts, your customers subscribe to your pro
 
 When creating your product, you provide a URL to your registration landing page. AWS Marketplace uses that URL to redirect customers to your registration landing page after they subscribe. On your software's registration URL, you collect whatever information is required to create an account for the customer. AWS Marketplace recommends collecting your customer’s email addresses if you plan to contact them through email for usage notifications.
 
-The registration landing page needs to be able to identify and accept the x-amzn-marketplace-token token in the form data from AWS Marketplace with the customer’s identifier for billing. It should then pass that token value to the AWS Marketplace Metering Service and AWS Marketplace Entitlement Service APIs to resolve for the unique customer identifier and corresponding product code.
+The registration landing page needs to be able to identify and accept the `x-amzn-marketplace-token` token in the form data from AWS Marketplace. Your landing page calls the [ResolveCustomer API](https://docs.aws.amazon.com/marketplace/latest/APIReference/API_marketplace-metering_ResolveCustomer.html) to get and persist **CustomerAWSAccountId**,**CustomerIdentifier**, **LicenseArn** and **ProductCode**. You use the **CustomerAWSAccountId** and for Concurrent Agreements additionally the **LicenseArn** for usage based billing.
+
 
 ![](misc/saas_product_setup_account.gif)
 
@@ -77,7 +78,7 @@ We are using the same DynamoDB stream to detect changes in the DynamoDB table. W
 
 ### Revoke access to customers with expired contracts and cancelled subscriptions 
 
-The revoke access logic is implemented in a similar manner as the grant access logic. 
+The revoke access logic is implemented in a similar manner as the grant access logic but uses the **License Deprovisioned** event.
 
 In our implementation the `MarketplaceTechAdmin` receives email when the contract expires or the subscription is cancelled. 
 AWS Marketplace strongly recommends automating the access and environment management which can be achieved by modifying the `grant-revoke-access-to-product.js` function.
@@ -86,14 +87,18 @@ AWS Marketplace strongly recommends automating the access and environment manage
 
 For SaaS subscriptions, the SaaS provider must meter for all usage, and then customers are billed by AWS based on the metering records provided. For SaaS contracts, you only meter for usage beyond a customer’s contract entitlements. When your application meters usage for a customer, your application is providing AWS with a quantity of usage accrued. Your application meters for the pricing dimensions that you defined when you created your product, such as gigabytes transferred or hosts scanned in a given hour.
 
+This solution includes a [Jupyter notebook](./test/test-metering.ipynb) to test metering for your SaaS subscription product.
+
 ### Implementation
 
-We have created MeteringSchedule rule in Amazon EventBridge that trigger the `metering-hourly-job.js` Lambda function **hourly**. It's querying all of the pending/unreported metering records from the `AWSMarketplaceMeteringRecords` table using the PendingMeteringRecordsIndex.
+The solutions creates a MeteringSchedule rule in Amazon EventBridge that triggers the `metering-hourly-job.js` Lambda function **hourly**. It's querying all of the pending/unreported metering records from the `AWSMarketplaceMeteringRecords` table using the PendingMeteringRecordsIndex.
 All of the pending records are aggregated based on the customerIdentifier and dimension name, and sent to the SQSMetering queue.
 The records in the `AWSMarketplaceMeteringRecords` table are expected to be inserted programmatically by your SaaS application. In this case you will have to give permissions to the service in charge of collecting usage data in your existing SaaS product to be able to write to `AWSMarketplaceMeteringRecords` table. 
 
 The lambda function `metering-sqs.js` is sending all of the queued metering records to the AWS Marketplace Metering service.
 After every call to the `batchMeterUsage` endpoint the rows are updated in the AWSMarketplaceMeteringRecords table, with the response returned from the Metering Service, which can be found in the `metering_response` field. If the request was unsuccessful the metering_failed value with be set to true and you will have to investigate the issue the error will be also stored in the `metering_response` field.
+
+Logs from `metering-hourly-job.js` and `metering-sqs.js` are stored in CloudWatch logs where you can find detailed information about the metering process.
 
 The new records in the AWSMarketplaceMeteringRecords table must be stored in the following format:
 
@@ -138,9 +143,9 @@ The new records in the AWSMarketplaceMeteringRecords table must be stored in the
 
 Where the `create_timestamp` is the sort key and `customerIdentifier` is the partition key, and they are both forming the Primary key.
 
-**Note**: You are responsible to choose a timestamp precision for your setup. For example when you use seconds precision for the `create_timestamp` and try to put more than one record within one second in the table with the same `create_timestamp` and `customerIdentifier`, only one record will be stored. You can use for example nano seconds precision for `create_timestamp` which is virtually unique.
+**Note**: You are responsible to choose a timestamp precision for your setup. For example when you use seconds precision for the `create_timestamp` and try to put more than one within one second in the table with the same `create_timestamp` and `customerIdentifier`, only one record will be stored. You can use for example nano seconds precision for `create_timestamp` which is virtually unique.
 
-**Note**: The new records format is in DynamoDB JSON format. It is different than JSON. The accepted time stamp is UNIX timestamp in UTC time. 
+**Note**: The new records format is in **DynamoDB JSON** format. It is different than JSON. The accepted time stamp is UNIX timestamp in UTC time. 
 
 After the record is submitted to AWS Marketplace BatchMeterUsage API, it will be updated and it will look like this:
 
@@ -237,15 +242,13 @@ To build and deploy your application for the first time, complete the following 
 
 ### Diagram of created resources
 
-Based on the value of the **TypeOfSaaSListing** parameter different set of resources will be created. 
+Based on the value of the **TypeOfSaaSListing** parameter different set of resources will be deployed: 
 
-In the case of *contracts_with_subscription* all of the resources depicted on the diagram below will be created.
+* In the case of ***contracts_with_subscription*** or ***subscriptions*** **all** of the **resources** depicted on the diagram below will be **deployed**.
 
-In the case of a *contracts*, the resources market with orange circles will not be created.
+* In the case of a ***contracts***, the resources market with **orange** circles will **not be deployed**.
 
-In the case of a *subscriptions* the resources market with purple circles will not be created.
-
-The landing page is optional. Use the CreateRegistrationWebPage parameter.
+The landing page is optional. Use the ***CreateRegistrationWebPage*** parameter to control if the registration page will be deployed.
 
 
 ![](misc/AWS_Marketplace_SaaS_Integration_Overview_EventBridge.png)

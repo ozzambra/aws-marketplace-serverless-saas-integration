@@ -101,12 +101,6 @@ Parameters:
     Description: "Retention period in days for CloudWatch log groups"
 
 Conditions:
-  CreateEntitlementLogic:
-    Fn::Or:
-      - !Equals [!Ref TypeOfSaaSListing, contracts_with_subscription]
-      - !Equals [!Ref TypeOfSaaSListing, contracts]
-      - !Equals [!Ref TypeOfSaaSListing, subscriptions]
-
   CreateSubscriptionLogic:
     Fn::Or:
       - !Equals [!Ref TypeOfSaaSListing, contracts_with_subscription]
@@ -283,8 +277,7 @@ Resources:
       Environment:
         Variables:
           NewSubscribersTableName: !Ref NewSubscribersTableName
-          EntitlementQueueUrl:
-            !If [CreateEntitlementLogic, !Ref EntitlementSQSQueue, !Ref AWS::NoValue]
+          EntitlementQueueUrl: !Ref EntitlementSQSQueue
           MarketplaceSellerEmail:
             !If [Buyernotificationemail, !Ref MarketplaceSellerEmail, !Ref AWS::NoValue]
       Policies:
@@ -296,15 +289,12 @@ Resources:
               Action:
                 - aws-marketplace:ResolveCustomer
               Resource: "*"
-        - !If
-          - CreateEntitlementLogic
-          - Statement:
-              - Sid: SQSPolicy
-                Effect: Allow
-                Action:
-                  - sqs:SendMessage
-                Resource: !GetAtt EntitlementSQSQueue.Arn
-          - !Ref "AWS::NoValue"
+        - Statement:
+            - Sid: SQSPolicy
+              Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt EntitlementSQSQueue.Arn
 
         - Statement:
             - Sid: Sendemail
@@ -322,11 +312,9 @@ Resources:
   
   EntitlementSQSQueue:
     Type: AWS::SQS::Queue
-    Condition: CreateEntitlementLogic
 
   EntitlementSQSHandler:
     Type: AWS::Serverless::Function
-    Condition: CreateEntitlementLogic
     DependsOn: EntitlementSQSHandlerLogGroup
     Properties:
       FunctionName: !Sub "${AWS::StackName}-EntitlementSQSHandler"
