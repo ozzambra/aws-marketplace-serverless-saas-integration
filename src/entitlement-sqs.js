@@ -3,7 +3,7 @@ const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb'
 const { MarketplaceCatalogClient, DescribeEntityCommand } = require('@aws-sdk/client-marketplace-catalog');
 const { MarketplaceEntitlementServiceClient, GetEntitlementsCommand } = require('@aws-sdk/client-marketplace-entitlement-service');
 //const { MarketplaceAgreementServiceClient, DescribeAgreementCommand } = require('@aws-sdk/client-marketplace-agreement');
-const { MarketplaceAgreementClient, DescribeAgreementCommand } = require('@aws-sdk/client-marketplace-agreement');
+const { MarketplaceAgreementClient, DescribeAgreementCommand, GetAgreementTermsCommand } = require('@aws-sdk/client-marketplace-agreement');
 const { NewSubscribersTableName: newSubscribersTableName, AWS_REGION: aws_region, PricingModel: pricingModel } = process.env;
 // MarketplaceEntitlementService is instantiated only in us-east-1 https://docs.aws.amazon.com/general/latest/gr/aws-marketplace.html#marketplaceentitlement
 const dynamodb = new DynamoDBClient({ region: aws_region });
@@ -79,20 +79,22 @@ async function getAgreementDetails(agreementId) {
   }
 }
 
-function checkForFreeTrial(agreementDetails) {
-  if (!agreementDetails || !agreementDetails.AcceptanceTerms) {
+async function checkForFreeTrial(agreementId) {
+  try {
+    const agreementClient = new MarketplaceAgreementClient({ region: 'us-east-1' });
+    const response = await agreementClient.send(new GetAgreementTermsCommand({ agreementId }));
+    logger.debug(`agreementTerms: ${JSON.stringify(response, null, 2)}`);
+    const hasFreeTrialTerm = response.acceptedTerms?.some(term => term.freeTrialPricingTerm) || false;
+    if (hasFreeTrialTerm) {
+      logger.info('Free trial term found in agreement');
+    } else {
+      logger.info('No free trial term found in agreement');
+    }
+    return hasFreeTrialTerm;
+  } catch (error) {
+    logger.error(`Error getting agreement terms for ${agreementId}:`, error);
     return false;
   }
-  
-  // Check if any of the acceptance terms contain a free trial
-  for (const term of agreementDetails.AcceptanceTerms) {
-    if (term.FreeTrialPricingTerm) {
-      logger.info('Free trial term found in agreement');
-      return true;
-    }
-  }
-  
-  return false;
 }
 
 
@@ -123,9 +125,9 @@ exports.handler = async (event) => {
       logger.debug(`acceptorAccountId: ${acceptorAccountId}`);
       logger.debug(`agreementId: ${agreementId}`);
 
-      // Fetch agreement details to check for free trial
+      // Fetch agreement details and check for free trial
       const agreementDetails = await getAgreementDetails(agreementId);
-      const isFreeTrialTermPresent = checkForFreeTrial(agreementDetails);
+      const isFreeTrialTermPresent = await checkForFreeTrial(agreementId);
       logger.info(`is_free_trial_term_present: ${isFreeTrialTermPresent}`);
 
       let entitlementData = {};

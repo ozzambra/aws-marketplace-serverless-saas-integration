@@ -330,6 +330,7 @@ Resources:
               Effect: Allow
               Action:
                 - aws-marketplace:DescribeAgreement
+                - aws-marketplace:GetAgreementTerms
                 - aws-marketplace:DescribeEntity
                 - aws-marketplace:GetEntitlements
               Resource: "*"

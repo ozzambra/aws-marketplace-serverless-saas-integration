@@ -77,20 +77,19 @@ exports.registerNewSubscriber = async (event) => {
       console.log('resolveCustomerResponse:', JSON.stringify(resolveCustomerResponse, null, 2));
 
       // Store new subscriber data in dynamoDb
-      // Once the ResolveCustomer API return the AgreementID we will use this as customerIdentifier
-      const { CustomerAWSAccountId, CustomerIdentifier, LicenseArn, ProductCode } = resolveCustomerResponse;
+      // Get ProductCode, customerAwsAccountId and LicenseArn from Registration Token
+      const { ProductCode, CustomerAWSAccountId, LicenseArn } = resolveCustomerResponse;
 
       const datetime = new Date().getTime().toString();
 
       // Write form inputs from ../web/index.html
-      // Add customerAwsAccountId
       // Use UpdateItem to upsert (update if exists, create if doesn't)
       const dynamoDbParams = {
         TableName: newSubscribersTableName,
         Key: {
           customerIdentifier: { S: LicenseArn },
         },
-        UpdateExpression: 'set companyName = :cn, contactPerson = :cp, contactPhone = :cph, contactEmail = :ce, productCode = :pc, customerAwsAccountId = :caid, CustomerIdentifier_deprecated = :cid, successfully_registered = :sr, updated_at = :ua',
+        UpdateExpression: 'set companyName = :cn, contactPerson = :cp, contactPhone = :cph, contactEmail = :ce, productCode = :pc, customerAwsAccountId = :caid, successfully_registered = :sr, updated_at = :ua',
         ExpressionAttributeValues: {
           ':cn': { S: companyName },
           ':cp': { S: contactPerson },
@@ -98,7 +97,6 @@ exports.registerNewSubscriber = async (event) => {
           ':ce': { S: contactEmail },
           ':pc': { S: ProductCode },
           ':caid': { S: CustomerAWSAccountId },
-          ':cid': { S: CustomerIdentifier || '' },
           ':sr': { BOOL: true },
           ':ua': { S: new Date().toISOString() },
         },
