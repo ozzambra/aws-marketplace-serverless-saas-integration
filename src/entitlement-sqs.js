@@ -16,7 +16,7 @@ const logger = winston.createLogger({
 });
 
 // get a product for a given productId
-// and check if it has entitlments
+// and check if it has entitlements
 async function getMarketplaceProduct(productId, region) {
   try {
     logger.info(`getMarketplaceProduct: productId: ${productId}`);
@@ -43,13 +43,13 @@ async function getMarketplaceProduct(productId, region) {
 }
 
 // call GetEntitlements API
-async function getEntitlements(productCode, customerAccountId, region) {
+async function getEntitlements(productCode, licenseArn, region) {
   try {
-    logger.info(`getEntitlements: productCode: ${productCode}, customerAccountId: ${customerAccountId}, region: ${region}`);
+    logger.info(`getEntitlements: productCode: ${productCode}, licenseArn: ${licenseArn}, region: ${region}`);
     const entitlementParams = {
       ProductCode: productCode,
       Filter: {
-        CUSTOMER_AWS_ACCOUNT_ID: [customerAccountId]
+        LICENSE_ARN: [licenseArn]
       }
     };
     logger.debug(`entitlementParams: ${JSON.stringify(entitlementParams, null, 2)}`);
@@ -156,10 +156,10 @@ exports.handler = async (event) => {
       // Only call GetEntitlements for contract-based pricing models
       //if (pricingModel !== 'subscriptions') {
       if (callEntitlements) {
-        logger.info('Calling GetEntitlements for contract-based pricing models'); 
+        logger.info(`Calling GetEntitlements for contract-based pricing models with licenseArn: ${licenseArn}`); 
         const entitlementsResponse = await getEntitlements(
           productCode, 
-          acceptorAccountId,
+          licenseArn,
           aws_region
         );
 

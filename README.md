@@ -6,7 +6,7 @@
 > The serverless integration for SaaS products has been updated to use [Amazon EventBridge notifications](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-eventbridge-integration.html). License events are processed via EventBridge rules and SQS queues. The solution no longer uses Amazon SNS topics from AWS Marketplace for notifications. All lifecycle events are handled by [EventBridge license events](https://docs.aws.amazon.com/marketplace/latest/userguide/notifications-eventbridge.html#events-for-licenses).
 
 > [**UPDATE March 2026 CustomerIdentifier**]
-> The `CustomerIdentifier` parameter for AWS Marketplace API is scheduled for deprecation. The current implementation uses the **License ARN** (`LicenseArn`) as the primary customer identifier. There are still key names in the DynamoDB tables that use the **name** `customerIdentifier`, but the **value** stored is the License ARN from the EventBridge event. This provides a stable, unique identifier for each customer's entitlement across the lifecycle of a subscription. By using the **License ARN** as `customerIdentifier` the solution supports already [Concurrent Agreements](https://aws.amazon.com/about-aws/whats-new/2026/02/concurrent-agreements-february/) on AWS Marketplace.
+> The `CustomerIdentifier` parameter for AWS Marketplace API is scheduled for deprecation. The current implementation uses the **License ARN** (`LicenseArn`) as the primary customer identifier in the NewSubscribersTable and as filter for the [GetEntitlements API](https://docs.aws.amazon.com/marketplace/latest/APIReference/API_marketplace-entitlements_GetEntitlements.html). There are still key names in the DynamoDB tables that use the **name** `customerIdentifier`, but the **value** stored is the License ARN from the EventBridge event. This provides a stable, unique identifier for each customer's entitlement across the lifecycle of a subscription. By using the **License ARN** as `customerIdentifier` and for getting entitlements the solution supports [Concurrent Agreements](https://aws.amazon.com/about-aws/whats-new/2026/02/concurrent-agreements-february/) on AWS Marketplace.
 
 
 This project demonstrates a serverless integration example to [onboard customers](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-product-customer-setup.html) for SaaS products in AWS Marketplace using AWS SAM (Serverless Application Model) for configuration, building, and deployment. It is primarily designed for users who are familiar with deploying AWS resources via CLI, need full configuration options, and want to customize the sample. For users seeking a simpler approach with less configuration, limited customization needs, or demo purposes, an alternative lab called "[Integrate your SaaS with the Serverless SaaS Integration reference](https://catalog.workshops.aws/mpseller/en-US/saas/integration-with-quickstart#background)" is available.
@@ -285,15 +285,7 @@ This library is licensed under the MIT-0 License. See the LICENSE file.
 
 ## Post deployment steps
 
-## Registration page is true
-1. Update the MarketplaceFulfillmentUrl in your AWS Marketplace Management Portal with the value from the output key 'MarketplaceFulfillmentUrl'. The value would be in a the form of a AWS cloudfront based url.
-2. Replace the baseUrl value in the web/script.js file from the web template provided with the value from the output key 'RedirectUrl'. 
-3. Replace the RedirectUrl value in the lambda environment variable with the value from the output key 'RedirectUrl'. Navigate to the AWS Console, look for AWS Lambda service, filter to the lambda with name ....Redirect... . Select the lambda function, go to configuration tab and then select the environment variable. 
-4. Ensure the email address used is a verified identity/domain in Amazon Simple Email Service.
-5. Ensure your Amazon Simple Email Service account is a production account. 
+1. Update the **MarketplaceFulfillmentUrl** (if you did not choose to update the fulfillment URL with the deployment) in your AWS Marketplace Management Portal with the value from the output key 'MarketplaceFulfillmentUrl'. The value would be in a the form of a AWS cloudfront based url.
+2. Ensure the email address used is a verified identity/domain in Amazon Simple Email Service.
+3. Ensure your Amazon Simple Email Service account is a production account. 
 
-## Registration page is false
-1. Update the MarketplaceFulfillmentUrl in your AWS Marketplace Management Portal with the value from the output key 'MarketplaceFulfillmentUrl'. The value would be in the form of an AWS API gateway url.
-2. Replace the baseUrl value in the web/script.js file from the web template provided with the value from the output key 'RedirectUrl'.
-3. Ensure the email address used is a verified identity/domain in Amazon Simple Email Service.
-4. Ensure your Amazon Simple Email Service account is a production account.
