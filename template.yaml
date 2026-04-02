@@ -87,12 +87,6 @@ Parameters:
       - "true"
       - "false"
 
-  LogRetentionInDays:
-    Type: Number
-    Default: 7
-    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653]
-    Description: "Retention period in days for CloudWatch log groups"
-
 Conditions:
   CreateSubscriptionLogic:
     Fn::Or:
@@ -216,54 +210,11 @@ Resources:
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
   
-  # ---- Lambda Log Groups ----
-
-  RegisterNewMarketplaceCustomerLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-RegisterNewMarketplaceCustomer"
-      RetentionInDays: !Ref LogRetentionInDays
-
-  EntitlementSQSHandlerLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-EntitlementSQSHandler"
-      RetentionInDays: !Ref LogRetentionInDays
-
-  GrantOrRevokeAccessLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-GrantOrRevokeAccess"
-      RetentionInDays: !Ref LogRetentionInDays
-
-  HourlyLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-Hourly"
-      RetentionInDays: !Ref LogRetentionInDays
-
-  MeteringSQSHandlerLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-MeteringSQSHandler"
-      RetentionInDays: !Ref LogRetentionInDays
-
-  LambdaRedirectPostRequestsLogGroup:
-    Type: AWS::Logs::LogGroup
-    Condition: CreateWeb
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-LambdaRedirectPostRequests"
-      RetentionInDays: !Ref LogRetentionInDays
-
   # ---- Lambda Functions ----
 
   RegisterNewMarketplaceCustomer:
     Type: AWS::Serverless::Function
-    DependsOn: RegisterNewMarketplaceCustomerLogGroup
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-RegisterNewMarketplaceCustomer"
-      LoggingConfig:
-        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-RegisterNewMarketplaceCustomer"
       CodeUri: src/
       Handler: register-new-subscriber.registerNewSubscriber
       Runtime: nodejs24.x
@@ -308,11 +259,7 @@ Resources:
 
   EntitlementSQSHandler:
     Type: AWS::Serverless::Function
-    DependsOn: EntitlementSQSHandlerLogGroup
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-EntitlementSQSHandler"
-      LoggingConfig:
-        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-EntitlementSQSHandler"
       CodeUri: src
       Handler: entitlement-sqs.handler
       Runtime: nodejs24.x
@@ -368,7 +315,6 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "/aws/events/mp-saas-license-${AWS::StackName}"
-      RetentionInDays: !Ref LogRetentionInDays
 
   MarketplaceSellerLicense:
     Type: AWS::Events::Rule
@@ -404,11 +350,7 @@ Resources:
 
   GrantOrRevokeAccess:
     Type: AWS::Serverless::Function
-    DependsOn: GrantOrRevokeAccessLogGroup
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-GrantOrRevokeAccess"
-      LoggingConfig:
-        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-GrantOrRevokeAccess"
       CodeUri: src
       Handler: grant-revoke-access-to-product.dynamodbStreamHandler
       Runtime: nodejs24.x
@@ -434,11 +376,7 @@ Resources:
   Hourly:
     Type: AWS::Serverless::Function
     Condition: CreateSubscriptionLogic
-    DependsOn: HourlyLogGroup
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-Hourly"
-      LoggingConfig:
-        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-Hourly"
       CodeUri: src
       Handler: metering-hourly-job.job
       Runtime: nodejs24.x
@@ -483,11 +421,7 @@ Resources:
   MeteringSQSHandler:
     Type: AWS::Serverless::Function
     Condition: CreateSubscriptionLogic
-    DependsOn: MeteringSQSHandlerLogGroup
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-MeteringSQSHandler"
-      LoggingConfig:
-        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-MeteringSQSHandler"
       CodeUri: src
       Handler: metering-sqs.handler
       Runtime: nodejs24.x
@@ -561,11 +495,7 @@ Resources:
   LambdaRedirectPostRequests:
     Type: AWS::Serverless::Function
     Condition: CreateWeb
-    DependsOn: LambdaRedirectPostRequestsLogGroup
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-LambdaRedirectPostRequests"
-      LoggingConfig:
-        LogGroup: !Sub "/aws/lambda/${AWS::StackName}-LambdaRedirectPostRequests"
       Runtime: nodejs24.x
       CodeUri: src/
       Handler: redirect.redirecthandler
@@ -1085,7 +1015,6 @@ Resources:
                 - !Split
                   - "/"
                   - !Ref AWS::StackId
-      RetentionInDays: !Ref LogRetentionInDays
   
   GetProductCode:
     Type: Custom::Lambda

@@ -2,10 +2,10 @@
 
 ![](misc/banner.png)
 
-> [**UPDATE March 2026 EventBridge notifications**]
+> [**UPDATE April 2026 EventBridge notifications**]
 > The serverless integration for SaaS products has been updated to use [Amazon EventBridge notifications](https://docs.aws.amazon.com/marketplace/latest/userguide/saas-eventbridge-integration.html). License events are processed via EventBridge rules and SQS queues. The solution no longer uses Amazon SNS topics from AWS Marketplace for notifications. All lifecycle events are handled by [EventBridge license events](https://docs.aws.amazon.com/marketplace/latest/userguide/notifications-eventbridge.html#events-for-licenses).
 
-> [**UPDATE March 2026 CustomerIdentifier**]
+> [**UPDATE April 2026 CustomerIdentifier**]
 > The `CustomerIdentifier` parameter for AWS Marketplace API is scheduled for deprecation. The current implementation uses the **License ARN** (`LicenseArn`) as the primary customer identifier in the NewSubscribersTable and as filter for the [GetEntitlements API](https://docs.aws.amazon.com/marketplace/latest/APIReference/API_marketplace-entitlements_GetEntitlements.html). There are still key names in the DynamoDB tables that use the **name** `customerIdentifier`, but the **value** stored is the License ARN from the EventBridge event. This provides a stable, unique identifier for each customer's entitlement across the lifecycle of a subscription. By using the **License ARN** as `customerIdentifier` and for getting entitlements the solution supports [Concurrent Agreements](https://aws.amazon.com/about-aws/whats-new/2026/02/concurrent-agreements-february/) on AWS Marketplace.
 
 
@@ -40,7 +40,7 @@ With SaaS subscriptions and SaaS contracts, your customers subscribe to your pro
 
 When creating your product, you provide a URL to your registration landing page. AWS Marketplace uses that URL to redirect customers to your registration landing page after they subscribe. On your software's registration URL, you collect whatever information is required to create an account for the customer. AWS Marketplace recommends collecting your customer’s email addresses if you plan to contact them through email for usage notifications.
 
-The registration landing page needs to be able to identify and accept the `x-amzn-marketplace-token` token in the form data from AWS Marketplace. Your landing page calls the [ResolveCustomer API](https://docs.aws.amazon.com/marketplace/latest/APIReference/API_marketplace-metering_ResolveCustomer.html) to get and persist **CustomerAWSAccountId**,**CustomerIdentifier**, **LicenseArn** and **ProductCode**. You use the **CustomerAWSAccountId** and for Concurrent Agreements additionally the **LicenseArn** for usage based billing.
+The registration landing page needs to be able to identify and accept the `x-amzn-marketplace-token` token in the form data from AWS Marketplace. Your landing page calls the [ResolveCustomer API](https://docs.aws.amazon.com/marketplace/latest/APIReference/API_marketplace-metering_ResolveCustomer.html) to get and persist **LicenseArn**, **CustomerAWSAccountId** and **ProductCode**. You use the **LicenseArn** and **CustomerAWSAccountId** for usage based billing. By using the **LicenseArn** you can meter product usage that have a **Concurrent Agreement**.
 
 
 ![](misc/saas_product_setup_account.gif)
@@ -50,7 +50,7 @@ You can choose to use your existing SaaS registration page, after collecting the
 
 ### Implementation
 
-In this sample we created **Amazon CloudFront** Distribution, which can be configured to use domain/CNAME by your choice. The POST request coming from AWS Marketplace is send to the CloudFront Distribution. From there it send to an **Amazon API Gateway**. The API Gateway invokes an **AWS Lambda** function - `src/redirect.js` - which transforms the POST request to a GET request, and passes the `x-amzn-marketplace-token` in the query string. 
+This sample deploys an **Amazon CloudFront** Distribution, which can be configured to use domain/CNAME by your choice. The POST request coming from AWS Marketplace is send to the CloudFront Distribution. From there it send to an **Amazon API Gateway**. The API Gateway invokes an **AWS Lambda** function - `src/redirect.js` - which transforms the POST request to a GET request, and passes the `x-amzn-marketplace-token` in the query string. 
 A static landing page hosted on S3 behind CloudFront takes the users inputs defined in the html form and submits them to the /subscriber API Gateway endpoint.
 
 The handler for the /subscriber endpoint is defined in the `src/register-new-subscriber.js` file. This lambda function calls the [ResolveCustomer API](https://docs.aws.amazon.com/marketplace/latest/APIReference/API_marketplace-metering_ResolveCustomer.html) and validates the token. If the token is valid, a customer record is created in the `AWSMarketplaceSubscribers` DynamoDB table and the data the customer submitted in the html form is stored.
@@ -87,7 +87,7 @@ AWS Marketplace strongly recommends automating the access and environment manage
 
 For SaaS subscriptions, the SaaS provider must meter for all usage, and then customers are billed by AWS based on the metering records provided. For SaaS contracts, you only meter for usage beyond a customer’s contract entitlements. When your application meters usage for a customer, your application is providing AWS with a quantity of usage accrued. Your application meters for the pricing dimensions that you defined when you created your product, such as gigabytes transferred or hosts scanned in a given hour.
 
-This solution includes a [Jupyter notebook](./test/test-metering.ipynb) to test metering for your SaaS subscription product.
+This solution includes a [Jupyter notebook](./test/test-metering.ipynb) to test metering for SaaS products with externally metered dimensions.
 
 ### Implementation
 
@@ -233,7 +233,6 @@ To build and deploy your application for the first time, complete the following 
     CrossAccountRoleName |  (Optional) Role name for the cross-account role.
     CreateRegistrationWebPage | Creates a registration page. Default value: true
     UpdateFulfillmentURL  | (Optional) Update the MarketplaceFulfillmentUrl in your AWS Marketplace Management Portal with the value from the output key 'MarketplaceFulfillmentUrl'. The value would be in a the form of a AWS cloudfront based url. Default value: false
-    LogRetentionInDays | Retention period in days for CloudWatch log groups. Default value: 7
 
 7. Wait for the stack to complete successfully.
 
@@ -265,12 +264,43 @@ The directory [test](test) includes some resources that you can use to test your
 see the [README](test/README.md) in the directory **test**.
 
 
-## Cleanup
+## Helper Scripts
 
-To delete the sample application that you created, use the AWS CLI. Assuming you used your project name for the stack name, you can run the following:
+The `helper/` directory contains utility scripts for post-deployment operations.
+
+### Set log retention
+
+Log groups are created without a retention policy by default. Use this script to set retention on all log groups in the stack (Lambda functions, EventBridge rules, and custom resources, including nested stacks):
 
 ```bash
-aws cloudformation delete-stack --stack-name app
+# Dry run to preview changes
+python3 helper/set-log-retention.py --stack-name <stack-name> --retention-days 7 --dry-run
+
+# Apply retention
+python3 helper/set-log-retention.py --stack-name <stack-name> --retention-days 7
+```
+
+Options:
+- `--stack-name` (required): CloudFormation stack name
+- `--retention-days`: Retention period in days (default: 7). Allowed values: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653
+- `--region`: AWS region
+- `--dry-run`: Show what would be changed without applying
+
+### Empty the CloudFront log bucket
+
+Before deleting the stack, the CloudFront log bucket must be emptied. This script finds the log bucket from the stack and removes all objects:
+
+```bash
+helper/empty-log-bucket.sh <stack-name>
+```
+
+## Cleanup
+
+To delete the sample application that you created, first empty the log bucket, then delete the stack:
+
+```bash
+helper/empty-log-bucket.sh <stack-name>
+aws cloudformation delete-stack --stack-name <stack-name>
 ```
 
 
