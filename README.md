@@ -319,3 +319,9 @@ This library is licensed under the MIT-0 License. See the LICENSE file.
 2. Ensure the email address used is a verified identity/domain in Amazon Simple Email Service.
 3. Ensure your Amazon Simple Email Service account is a production account. 
 
+## Legacy version (SNS notifications)
+The previous version of this integration used Amazon SNS topics for marketplace notifications. If you need to use that version, check out the last commit before the EventBridge migration:
+
+```bash
+git checkout beeb9bb15293eb8ea433245c182e8d23e7d47be7
+```
