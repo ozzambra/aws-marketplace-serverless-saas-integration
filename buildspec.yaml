@@ -2,7 +2,7 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      nodejs: 22
+      nodejs: 24
     commands:
       - node --version
   pre_build:
@@ -15,8 +15,8 @@ phases:
       - echo "${ProductId}"
       - echo "${TypeOfSaaSListing}"
       - echo "${WebsiteS3BucketName}"
-      - echo "${SNSAccountID}"
-      - echo "${SNSRegion}"
+      # - echo "${SNSAccountID}"
+      # - echo "${SNSRegion}"
       - echo "${CreateCrossAccountRole}"
       - echo "${CrossAccountId}"
       - echo "${CrossAccountRoleName}"
@@ -36,8 +36,6 @@ phases:
         ParameterKey=ProductId,ParameterValue=${ProductId} \
         ParameterKey=MarketplaceTechAdminEmail,ParameterValue=${MarketplaceTechAdminEmail} \
         ParameterKey=MarketplaceSellerEmail,ParameterValue=${MarketplaceTechAdminEmail} \
-        ParameterKey=SNSAccountID,ParameterValue=${SNSAccountID} \
-        ParameterKey=SNSRegion,ParameterValue=${SNSRegion} \
         ParameterKey=CreateCrossAccountRole,ParameterValue=${CreateCrossAccountRole} \
         ParameterKey=CrossAccountId,ParameterValue=${CrossAccountId} \
         ParameterKey=CrossAccountRoleName,ParameterValue=${CrossAccountRoleName}-${CODEBUILD_BUILD_NUMBER} \
