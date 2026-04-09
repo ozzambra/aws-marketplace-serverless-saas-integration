@@ -13,7 +13,7 @@ const logger = winston.createLogger({
 
 
 function formatMessage(message) {
-  const keys = ["customerAwsAccountId", "productCode", "customerIdentifier", "companyName", "contactEmail"];
+  const keys = ["productCode", "contactPerson", "companyName", "contactPhone", "contactEmail", "customerAwsAccountId", "customerIdentifier" ];
   return keys.filter((k) => k in message).map((k) => `${k}: ${message[k]}`).join("\n") + "\n\nRaw message:\n" + JSON.stringify(message, null, 2);
 }
 
@@ -83,13 +83,13 @@ exports.dynamodbStreamHandler = async (event, context) => {
 
       if (grantAccess) {
         subject = `AWS Marketplace - New Subscribtion${suffix}`;
-        message = `New product subscribtion:\n${formatMessage(newImage)}`;
+        message = `New product subscribtion:\n\n${formatMessage(newImage)}`;
       } else if (revokeAccess) {
         subject = `AWS Marketplace - Unsubscribe${suffix}`;
-        message = `Unsubscribe from product:\n${formatMessage(newImage)}`;
+        message = `Unsubscribe from product:\n\n${formatMessage(newImage)}`;
       } else if (entitlementUpdated) {
         subject = `AWS Marketplace - Subscription Change${suffix}`;
-        message = `Product subscription changed:\n${formatMessage(newImage)}`;
+        message = `Product subscription changed:\n\n${formatMessage(newImage)}`;
       }
 
       // Truncate subject line if it's too long
