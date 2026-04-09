@@ -429,9 +429,12 @@ Resources:
         Variables:
           ProductCode: !GetAtt GetProductCode.ProductCode
           AWSMarketplaceMeteringRecordsTableName: !Ref AWSMarketplaceMeteringRecordsTableName
+          NewSubscribersTableName: !Ref NewSubscribersTableName
       Policies:
         - DynamoDBWritePolicy:
             TableName: !Ref AWSMarketplaceMeteringRecordsTableName
+        - DynamoDBReadPolicy:
+            TableName: !Ref NewSubscribersTableName
         - Statement:
             - Sid: AWSMarketplaceMetering
               Effect: Allow

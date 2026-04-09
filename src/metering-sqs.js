@@ -1,7 +1,7 @@
 const winston = require('winston');
-const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, UpdateItemCommand, GetItemCommand } = require('@aws-sdk/client-dynamodb');
 const { MarketplaceMeteringClient, BatchMeterUsageCommand } = require('@aws-sdk/client-marketplace-metering');
-const { ProductCode: ProductCode, AWSMarketplaceMeteringRecordsTableName: AWSMarketplaceMeteringRecordsTableName , AWS_REGION: aws_region } = process.env;
+const { ProductCode: ProductCode, AWSMarketplaceMeteringRecordsTableName: AWSMarketplaceMeteringRecordsTableName, NewSubscribersTableName: NewSubscribersTableName, AWS_REGION: aws_region } = process.env;
 const dynamodb = new DynamoDBClient({ region: aws_region });
 // MarketplaceMetering is instantianize in us-east-1 as all SaaS product listing ARN is stored in us-east-1.
 const marketplacemetering = new MarketplaceMeteringClient({ region: 'us-east-1' });
@@ -13,6 +13,34 @@ const logger = winston.createLogger({
   ],
 });
 
+async function getCustomerAwsAccountId(licenseArn) {
+  try {
+    const result = await dynamodb.send(new GetItemCommand({
+      TableName: NewSubscribersTableName,
+      Key: { customerIdentifier: { S: licenseArn } },
+      ProjectionExpression: 'customerAwsAccountId',
+    }));
+    const accountId = result.Item?.customerAwsAccountId?.S;
+    if (!accountId) {
+      logger.error(`Could not resolve customerAwsAccountId for LicenseArn: ${licenseArn}`);
+    }
+    return accountId;
+  } catch (error) {
+    logger.error(`Error looking up customerAwsAccountId for ${licenseArn}:`, error);
+    return null;
+  }
+}
+
+// Determine the type of customerIdentifier:
+// 1. 12-digit number -> CustomerAWSAccountId
+// 2. starts with arn:aws:license-manager: -> LicenseArn
+// 3. anything else -> CustomerIdentifier (legacy, being deprecated)
+function getIdentifierType(customerIdentifier) {
+  if (/^\d{12}$/.test(customerIdentifier)) return 'CustomerAWSAccountId';
+  if (customerIdentifier.startsWith('arn:aws:license-manager:')) return 'LicenseArn';
+  return 'CustomerIdentifier';
+}
+
 exports.handler = async (event) => {
   logger.debug({"event" : event});
   await Promise.all(event.Records.map(async (record) => {
@@ -20,25 +48,42 @@ exports.handler = async (event) => {
     logger.debug({"SQS message body": body});
 
     const timestmpNow = new Date();
+    const identifierType = getIdentifierType(body.customerIdentifier);
 
-    // ...(is12Digits ? { CustomerAWSAccountId: body.customerIdentifier } : { CustomerIdentifier: body.customerIdentifier }),
-    const is12Digits = /^\d{12}$/.test(body.customerIdentifier);
-    const isLicenseArn = body.customerIdentifier.startsWith('arn:aws:license-manager:');
+    logger.debug({
+      "customerIdentifierType": identifierType,
+      "customerIdentifier": body.customerIdentifier
+    });
+
     const UsageRecords = [];
-    body.dimension_usage.map((r) => UsageRecords.push(
-      {
-        ...(isLicenseArn && { LicenseArn: body.customerIdentifier }),
-        CustomerAWSAccountId: body.customerAwsAccountId,
+    for (const r of body.dimension_usage) {
+      const record = {
         Dimension: r.dimension,
         Quantity: r.value,
         Timestamp: timestmpNow,
-      },
-    ));
+      };
 
-    const batchMeteringParams = isLicenseArn 
-    ? { UsageRecords }
-    : { ProductCode, UsageRecords };
+      switch (identifierType) {
+        case 'CustomerAWSAccountId':
+          record.CustomerAWSAccountId = body.customerIdentifier;
+          break;
+        case 'LicenseArn':
+          record.LicenseArn = body.customerIdentifier;
+          record.CustomerAWSAccountId = await getCustomerAwsAccountId(body.customerIdentifier);
+          break;
+        case 'CustomerIdentifier':
+        default:
+          record.CustomerIdentifier = body.customerIdentifier;
+          break;
+      }
 
+      UsageRecords.push(record);
+    }
+
+    // LicenseArn-based metering does not require ProductCode
+    const batchMeteringParams = identifierType === 'LicenseArn'
+      ? { UsageRecords }
+      : { ProductCode, UsageRecords };
 
     logger.debug({"UsageRecords" : UsageRecords});
     let meteringResponse = '';
