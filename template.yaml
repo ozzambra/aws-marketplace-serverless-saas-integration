@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: "AWS Marketplace Serverless SaaS Integration Application"
+Description: "AWS Marketplace Serverless SaaS Integration Application (uksb-sbygl2ms53)"
 Globals:
   Function:
     Timeout: 30
