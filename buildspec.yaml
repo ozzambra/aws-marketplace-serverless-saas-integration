@@ -15,8 +15,6 @@ phases:
       - echo "${ProductId}"
       - echo "${TypeOfSaaSListing}"
       - echo "${WebsiteS3BucketName}"
-      # - echo "${SNSAccountID}"
-      # - echo "${SNSRegion}"
       - echo "${CreateCrossAccountRole}"
       - echo "${CrossAccountId}"
       - echo "${CrossAccountRoleName}"

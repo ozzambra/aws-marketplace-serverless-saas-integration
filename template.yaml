@@ -510,9 +510,6 @@ Resources:
             Principal:
               Service:
                 - "lambda.amazonaws.com"
-      #Environment:
-      #  Variables:
-      #    RedirectUrl: https://aws-ia.github.io/cloudformation-aws-marketplace-saas/#_post_deployment_steps
       Events:
         RedirectMarketplaceToken:
           Type: Api
